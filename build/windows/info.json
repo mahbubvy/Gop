@@ -1,0 +1,16 @@
+{
+	"fixed": {
+		"file_version": "1.3.0"
+	},
+	"info": {
+		"0409": {
+			"FileVersion": "1.3.0",
+			"ProductVersion": "1.3.0",
+			"CompanyName": "xob0t",
+			"FileDescription": "gotohp 1.3.0 - Local upload records",
+			"LegalCopyright": "© now, My Company",
+			"ProductName": "gotohp",
+			"Comments": "Local upload records, optional repeat-upload skipping, album media reuse, searchable history and CSV export. Includes cancellation safeguards and visible debug export above notifications."
+		}
+	}
+}

@@ -1,0 +1,135 @@
+//go:build !cli
+
+package main
+
+import (
+	"embed"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+
+	"app/backend"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
+//go:embed all:frontend/dist
+var assets embed.FS
+
+// buildLabel is deliberately empty for normal builds. Test builds can set it
+// with -ldflags "-X main.buildLabel=..." without changing the release version.
+var buildLabel string
+
+func appTitle() string {
+	title := "gotohp v" + getAppVersion()
+	if buildLabel != "" {
+		title += " — " + buildLabel
+	}
+	return title
+}
+
+func main() {
+	// Check if running in CLI mode based on recognized commands
+	// If unrecognized arguments are passed, default to GUI mode
+	if len(os.Args) > 1 && isCLICommand(os.Args[1]) {
+		runCLI()
+		return
+	}
+
+	// Run GUI mode (default when no arguments or unrecognized arguments)
+	runGUI()
+}
+
+func runGUI() {
+	normalizeFrontendDevServerURL()
+
+	wailsApp := application.New(application.Options{
+		Name:        "com.xob0t.gotohp",
+		Description: "Google Photos unofficial client",
+		Services: []application.Service{
+			application.NewService(&backend.ConfigManager{}),
+		},
+		Assets: application.AssetOptions{
+			Handler: application.BundledAssetFileServer(assets),
+		},
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
+	})
+
+	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:               appTitle(),
+		Frameless:           false,
+		Width:               400,
+		Height:              600,
+		MinWidth:            400,
+		MinHeight:           600,
+		MaxWidth:            800,
+		MaxHeight:           900,
+		EnableFileDrop:      true,
+		MaximiseButtonState: application.ButtonEnabled,
+		BackgroundType:      application.BackgroundTypeTranslucent,
+		Mac: application.MacWindow{
+			InvisibleTitleBarHeight: 0,
+			Backdrop:                application.MacBackdropTranslucent,
+			TitleBar:                application.MacTitleBarHiddenInset,
+		},
+		URL: "/",
+	})
+
+	// Wrap Wails app in AppInterface
+	app := backend.NewWailsApp(wailsApp)
+	uploadManager := backend.NewUploadManager(app)
+
+	// Listen for upload cancel event
+	wailsApp.Event.On("uploadCancel", func(e *application.CustomEvent) {
+		uploadManager.Cancel()
+	})
+
+	window.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		paths := event.Context().DroppedFiles()
+		dropTarget := event.Context().DropTargetDetails()
+
+		var dropZone string
+		if dropTarget != nil {
+			dropZone = dropTarget.Attributes["data-drop-zone"]
+			wailsApp.Logger.Info("Drop target detected",
+				"dropZone", dropZone,
+				"elementID", dropTarget.ElementID)
+		}
+
+		// Emit event to frontend with drop details
+		wailsApp.Event.Emit("files-dropped", backend.FilesDroppedEvent{
+			Files:    paths,
+			DropZone: dropZone,
+		})
+	})
+
+	// Listen for upload request from frontend (after drop zone is determined)
+	wailsApp.Event.On("startUpload", func(e *application.CustomEvent) {
+		if data, ok := e.Data.(backend.StartUploadEvent); ok {
+			wailsApp.Logger.Info("Starting upload", "fileCount", len(data.Files))
+			uploadManager.Upload(app, data.Files, data.BypassLocalRecords)
+		} else {
+			wailsApp.Logger.Error("startUpload: unexpected data type", "type", fmt.Sprintf("%T", e.Data))
+		}
+	})
+
+	err := wailsApp.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func normalizeFrontendDevServerURL() {
+	const envName = "FRONTEND_DEVSERVER_URL"
+
+	value := os.Getenv(envName)
+	value = strings.Replace(value, "http://localhost:", "http://127.0.0.1:", 1)
+	value = strings.Replace(value, "https://localhost:", "https://127.0.0.1:", 1)
+	if value != os.Getenv(envName) {
+		_ = os.Setenv(envName, value)
+	}
+}
