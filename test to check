@@ -1,0 +1,18 @@
+Open gotohp-v1.3.0.exe after closing the old version. Use a small test folder. Keep Force Upload and Delete From Host off.
+1. Record uploads
+   Home → Upload Records → leave recording on. Upload two files using Upload Only. Confirm both appear in records afterward.
+2. Skip recorded files
+   Enable “Skip files recorded as uploaded.” Select those same files again. Expect 2 recorded, no transfer, and completion showing 2 locally recorded.
+3. Mixed files
+   Add one new file and select all three. Expect 2 recorded, 1 normal-upload candidate.
+4. Album reuse
+   Select the recorded files for a New album, then a Recent album. They should be added without retransferring. Check Google Photos to confirm.
+5. Auto albums
+   Select three folders with Auto Album. Confirm all three albums appear separately with correct counts.
+6. Cancel
+   Cancel during record checking—nothing should upload. Then cancel an upload after one file finishes; that completed file should remain recorded after restarting.
+7. Records screen
+   Test search, CSV export, and forgetting one record. Forgetting must not delete the actual file or Google Photos media.
+8. Log button
+   While a warning is visible, click the bottom-right log button. Repeat inside Settings and at compact/enlarged window sizes. It should remain visible and clickable.
+If something fails, export the debug log and tell me the test number.
