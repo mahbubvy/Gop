@@ -62,8 +62,8 @@ func runGUI() {
 	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:               appTitle(),
 		Frameless:           false,
-		Width:               400,
-		Height:              600,
+		Width:               800,
+		Height:              900,
 		MinWidth:            400,
 		MinHeight:           600,
 		MaxWidth:            800,

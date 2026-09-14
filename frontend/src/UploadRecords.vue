@@ -93,10 +93,13 @@ onMounted(initialize)
     <div v-if="error" role="alert" class="text-sm space-y-2"><p>{{ error }}</p><Button variant="outline" :disabled="busy" @click="initialize">Try again</Button></div>
     <p v-if="busy" role="status" class="text-sm text-muted-foreground">Working…</p>
     <p v-else-if="!rows.length && !error" class="text-sm text-muted-foreground">{{ appliedSearch ? 'No matching records.' : 'No recorded uploads for this account yet. Earlier uploads are not imported automatically.' }}</p>
-    <div v-for="group in groups" :key="group.folder" class="rounded-xl border p-3 space-y-3">
-      <h2 class="break-all text-sm font-semibold">{{ group.folder }}</h2><p class="text-xs text-muted-foreground">{{ group.files.length }} records on this page</p>
+    <details v-for="group in groups" :key="JSON.stringify([appliedSearch, offset, group.folder])" class="rounded-xl border p-3 space-y-3">
+      <summary class="cursor-pointer break-all text-sm font-semibold">
+        {{ group.folder }}
+        <span class="mt-1 block text-xs font-normal text-muted-foreground">{{ group.files.length }} records on this page</span>
+      </summary>
       <label v-for="row in group.files" :key="row.path" class="flex items-start gap-2 text-sm"><input v-model="selected" type="checkbox" :value="row.path" :disabled="busy" :aria-label="`Select ${row.path}`"><span class="min-w-0 break-all">{{ row.path.split(/[\\/]/).pop() }}<span class="block text-xs text-muted-foreground">{{ new Date(row.recordedAt).toLocaleString() }} · {{ (row.size / 1048576).toFixed(2) }} MB · {{ row.origin === 'remote-match' ? 'Already in library' : 'Uploaded' }}</span></span></label>
-    </div>
+    </details>
     <div class="flex items-center justify-between gap-2"><Button variant="outline" :disabled="busy || offset === 0" @click="page(-1)">Previous</Button><span class="text-xs">Page {{ offset / 50 + 1 }} · up to 50 records</span><Button variant="outline" :disabled="busy || !hasMore || !!error" @click="page(1)">Next</Button></div>
   </section>
 </template>

@@ -3,11 +3,12 @@
 Personal UI-enhanced version of [xob0t/gotohp](https://github.com/xob0t/gotohp).
 Original MIT license and attribution are retained.
 
-Windows release: **v1.3.0 — Local upload records**. Adds local upload history,
+Windows release: **v1.3.1 — Desktop UI refinements**. Adds collapsed record folders,
+14 recent albums per account, and an 800 × 900 default window. Includes local upload history,
 optional local repeat-upload skipping, album media reuse, CSV export and UI
 improvements. Native acceptance checks: [test checklist](WINDOWS_V1.3.0_TEST_CHECKLIST.md).
 Download the EXE from this repository's Releases page. Release workflows are
-manual; the v1.3.0 asset is the locally tested Windows x64 build.
+manual; release assets are locally built Windows x64 executables.
 
 ## Original project overview
 

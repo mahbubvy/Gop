@@ -56,7 +56,7 @@ type RecentAlbum struct {
 	LastUsedAt int64  `json:"lastUsedAt" koanf:"last_used_at"`
 }
 
-const maxRecentAlbumsPerAccount = 8
+const maxRecentAlbumsPerAccount = 14
 const maxAlbumHistoryPerAccount = 40
 
 type AlbumHistoryEntry struct {
