@@ -40,12 +40,23 @@ type Config struct {
 	DisableUnsupportedFilesFilter bool                           `json:"disableUnsupportedFilesFilter" koanf:"disable_unsupported_files_filter"`
 	AlbumName                     string                         `json:"albumName" koanf:"album_name"`
 	AlbumAutoMode                 bool                           `json:"albumAutoMode" koanf:"album_auto_mode"`
+	SavedAlbumsByAccount          map[string][]SavedAlbum        `json:"-" koanf:"saved_albums_by_account"`
 	RecentAlbumsByAccount         map[string][]RecentAlbum       `json:"recentAlbumsByAccount,omitempty" koanf:"recent_albums_by_account"`
 	AlbumHistoryByAccount         map[string][]AlbumHistoryEntry `json:"albumHistoryByAccount,omitempty" koanf:"album_history_by_account"`
+	BackgroundMode                string                         `json:"backgroundMode" koanf:"background_mode"`
+	BackgroundColor               string                         `json:"backgroundColor" koanf:"background_color"`
+	BackgroundImageKey            string                         `json:"backgroundImageKey,omitempty" koanf:"background_image_key"`
+	BackgroundsByAccount          map[string]AppBackground       `json:"-" koanf:"backgrounds_by_account"`
 	SetDateFromFilename           bool                           `json:"setDateFromFilename" koanf:"set_date_from_filename"`
 	ExcludePattern                string                         `json:"excludePattern" koanf:"exclude_pattern"`
 	// IgnoreAppleMetadata is a CLI-only per-command override and is never persisted.
 	IgnoreAppleMetadata bool `json:"-" koanf:"-"`
+}
+
+type AppBackground struct {
+	Mode     string `json:"mode" koanf:"mode"`
+	Color    string `json:"color" koanf:"color"`
+	ImageKey string `json:"imageKey,omitempty" koanf:"image_key"`
 }
 
 // RecentAlbum is a locally stored shortcut to an album that was successfully
@@ -54,6 +65,11 @@ type RecentAlbum struct {
 	AlbumID    string `json:"albumId" koanf:"album_id"`
 	AlbumName  string `json:"albumName" koanf:"album_name"`
 	LastUsedAt int64  `json:"lastUsedAt" koanf:"last_used_at"`
+}
+
+type SavedAlbum struct {
+	AlbumID   string `json:"albumId" koanf:"album_id"`
+	AlbumName string `json:"albumName" koanf:"album_name"`
 }
 
 const maxRecentAlbumsPerAccount = 14
@@ -70,6 +86,7 @@ type AlbumHistoryEntry struct {
 type AccountSummary struct {
 	Email             string `json:"email"`
 	NeedsTokenBinding bool   `json:"needsTokenBinding"`
+	AvatarDataURL     string `json:"avatarDataURL,omitempty"`
 }
 
 type AccountsState struct {
@@ -235,6 +252,112 @@ func (g *ConfigManager) GetRecentAlbums() []RecentAlbum {
 	return result
 }
 
+func (g *ConfigManager) GetSavedAlbums() []SavedAlbum {
+	ensureConfigLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	items := AppConfig.SavedAlbumsByAccount[AppConfig.Selected]
+	result := make([]SavedAlbum, len(items))
+	copy(result, items)
+	return result
+}
+
+// SaveSavedAlbum stores or renames a local shortcut; Google Photos receives only the ID during upload.
+func (g *ConfigManager) SaveSavedAlbum(albumID, albumName string) error {
+	albumID, albumName = strings.TrimSpace(albumID), strings.TrimSpace(albumName)
+	if !IsAlbumKey(albumID) || albumName == "" {
+		return errors.New("a valid album identifier and display name are required")
+	}
+	ensureConfigLoaded()
+	configMu.Lock()
+	defer configMu.Unlock()
+	account := AppConfig.Selected
+	if account == "" {
+		return errors.New("select an account before saving an album")
+	}
+	previous, hadPrevious := AppConfig.SavedAlbumsByAccount[account]
+	items := append([]SavedAlbum(nil), previous...)
+	updated := false
+	for i := range items {
+		if items[i].AlbumID == albumID {
+			items[i].AlbumName = albumName
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		items = append(items, SavedAlbum{AlbumID: albumID, AlbumName: albumName})
+	}
+	if AppConfig.SavedAlbumsByAccount == nil {
+		AppConfig.SavedAlbumsByAccount = make(map[string][]SavedAlbum)
+	}
+	AppConfig.SavedAlbumsByAccount[account] = items
+	previousRecent, hadRecent := AppConfig.RecentAlbumsByAccount[account]
+	if hadRecent {
+		previousRecent = append([]RecentAlbum(nil), previousRecent...)
+		items := append([]RecentAlbum(nil), previousRecent...)
+		for i := range items {
+			if items[i].AlbumID == albumID {
+				items[i].AlbumName = albumName
+			}
+		}
+		AppConfig.RecentAlbumsByAccount[account] = items
+	}
+	previousHistory, hadHistory := AppConfig.AlbumHistoryByAccount[account]
+	if hadHistory {
+		previousHistory = append([]AlbumHistoryEntry(nil), previousHistory...)
+		AppConfig.AlbumHistoryByAccount[account] = renameAlbumHistoryEntries(previousHistory, albumID, albumName)
+	}
+	if err := saveAppConfigLocked(); err != nil {
+		if hadPrevious {
+			AppConfig.SavedAlbumsByAccount[account] = previous
+		} else {
+			delete(AppConfig.SavedAlbumsByAccount, account)
+		}
+		if hadRecent {
+			AppConfig.RecentAlbumsByAccount[account] = previousRecent
+		}
+		if hadHistory {
+			AppConfig.AlbumHistoryByAccount[account] = previousHistory
+		}
+		return err
+	}
+	return nil
+}
+
+func (g *ConfigManager) RemoveSavedAlbum(albumID string) error {
+	albumID = strings.TrimSpace(albumID)
+	if !IsAlbumKey(albumID) {
+		return errors.New("a valid album identifier is required")
+	}
+	ensureConfigLoaded()
+	configMu.Lock()
+	defer configMu.Unlock()
+	account := AppConfig.Selected
+	if account == "" {
+		return errors.New("select an account before removing a saved album")
+	}
+	previous, hadPrevious := AppConfig.SavedAlbumsByAccount[account]
+	items := make([]SavedAlbum, 0, len(previous))
+	for _, item := range previous {
+		if item.AlbumID != albumID {
+			items = append(items, item)
+		}
+	}
+	if len(items) == 0 {
+		delete(AppConfig.SavedAlbumsByAccount, account)
+	} else {
+		AppConfig.SavedAlbumsByAccount[account] = items
+	}
+	if err := saveAppConfigLocked(); err != nil {
+		if hadPrevious {
+			AppConfig.SavedAlbumsByAccount[account] = previous
+		}
+		return err
+	}
+	return nil
+}
+
 // TouchRecentAlbum records a successfully updated, explicitly selected album.
 // Auto Album folders are deliberately excluded by the caller to keep this
 // shortcut list useful instead of filling it with one-off folder albums.
@@ -323,12 +446,26 @@ func (g *ConfigManager) AddAlbumHistory(albumID, albumName string, itemsAdded in
 		if IsAlbumKey(name) || strings.HasPrefix(name, "Album (AF1Qip") {
 			name = "Saved album"
 		}
-		items := append([]AlbumHistoryEntry{{AlbumID: albumID, AlbumName: name, ItemsAdded: itemsAdded, Operation: operation, CreatedAt: time.Now().Unix()}}, config.AlbumHistoryByAccount[config.Selected]...)
+		history := config.AlbumHistoryByAccount[config.Selected]
+		if name != "" && name != "Saved album" {
+			history = renameAlbumHistoryEntries(history, albumID, name)
+		}
+		items := append([]AlbumHistoryEntry{{AlbumID: albumID, AlbumName: name, ItemsAdded: itemsAdded, Operation: operation, CreatedAt: time.Now().Unix()}}, history...)
 		if len(items) > maxAlbumHistoryPerAccount {
 			items = items[:maxAlbumHistoryPerAccount]
 		}
 		config.AlbumHistoryByAccount[config.Selected] = items
 	})
+}
+
+func renameAlbumHistoryEntries(entries []AlbumHistoryEntry, albumID, albumName string) []AlbumHistoryEntry {
+	updated := append([]AlbumHistoryEntry(nil), entries...)
+	for i := range updated {
+		if updated[i].AlbumID == albumID {
+			updated[i].AlbumName = albumName
+		}
+	}
+	return updated
 }
 
 // ExportDebugLog writes a user-approved diagnostic report. Its contents are
@@ -470,6 +607,12 @@ func (g *ConfigManager) RemoveCredentials(email string) error {
 	// Find and remove the credential with matching email
 	found := false
 	var updatedCredentials []string
+	previousCredentials := AppConfig.Credentials
+	previousSelected := AppConfig.Selected
+	previousBackgrounds := AppConfig.BackgroundsByAccount
+	accountKey := backgroundAccountKey(email)
+	removedBackground := AppConfig.BackgroundsByAccount[accountKey]
+	hadBackground := AppConfig.BackgroundsByAccount != nil
 
 	for _, cred := range AppConfig.Credentials {
 		params, err := url.ParseQuery(cred)
@@ -496,8 +639,28 @@ func (g *ConfigManager) RemoveCredentials(email string) error {
 	if AppConfig.Selected == email {
 		AppConfig.Selected = ""
 	}
+	if hadBackground {
+		backgrounds := make(map[string]AppBackground, len(AppConfig.BackgroundsByAccount))
+		for key, background := range AppConfig.BackgroundsByAccount {
+			if key != accountKey {
+				backgrounds[key] = background
+			}
+		}
+		AppConfig.BackgroundsByAccount = backgrounds
+	}
 
-	_ = saveAppConfigLocked()
+	if err := saveAppConfigLocked(); err != nil {
+		AppConfig.Credentials = previousCredentials
+		AppConfig.Selected = previousSelected
+		AppConfig.BackgroundsByAccount = previousBackgrounds
+		return err
+	}
+	if hadBackground {
+		removeUnusedBackgroundImageLocked(removedBackground.ImageKey)
+	}
+	if err := removeAccountAvatar(email); err != nil {
+		return fmt.Errorf("account was removed, but its local avatar could not be deleted: %w", err)
+	}
 	return nil
 }
 
@@ -760,6 +923,12 @@ func (g *ConfigManager) GetSettings() Config {
 
 	settings := AppConfig
 	settings.Credentials = nil
+	if settings.Selected != "" {
+		background := selectedBackgroundLocked(settings.Selected)
+		settings.BackgroundMode = background.Mode
+		settings.BackgroundColor = background.Color
+		settings.BackgroundImageKey = background.ImageKey
+	}
 	return settings
 }
 
@@ -780,6 +949,7 @@ func (g *ConfigManager) GetAccounts() AccountsState {
 		state.Accounts = append(state.Accounts, AccountSummary{
 			Email:             values.Get("Email"),
 			NeedsTokenBinding: credentialNeedsTokenBinding(values),
+			AvatarDataURL:     accountAvatarDataURL(values.Get("Email")),
 		})
 	}
 	return state

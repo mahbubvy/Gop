@@ -7,6 +7,10 @@ export function mediaLabel(paths: string[]): string {
   return 'files'
 }
 
+export function uploadedFileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path
+}
+
 export function resultHeading(cancelled: boolean, uploaded: number, failed: number, albumErrors: number, skipped: number): string {
   if (cancelled) return 'Upload cancelled'
   if (failed && !uploaded && !skipped) return 'Upload failed'

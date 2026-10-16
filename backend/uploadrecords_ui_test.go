@@ -21,7 +21,9 @@ func TestUploadRecordPagesSearchAndForget(t *testing.T) {
 	defer s.Close()
 	var records []UploadRecord
 	for i := 0; i < 105; i++ {
-		records = append(records, testRecord(dir, i))
+		record := testRecord(dir, i)
+		record.RecordedAtNS = int64(i + 1)
+		records = append(records, record)
 	}
 	for _, account := range []string{"a", "b"} {
 		if err := s.SaveConfirmed(ctx, account, records); err != nil {
@@ -32,9 +34,15 @@ func TestUploadRecordPagesSearchAndForget(t *testing.T) {
 	if err != nil || len(first.Rows) != 50 || !first.HasMore {
 		t.Fatalf("first %v %v", first, err)
 	}
+	if got := filepath.Base(first.Rows[0].Path); got != "photo-104.jpg" {
+		t.Fatalf("newest record first: got %q", got)
+	}
 	last, err := s.page(ctx, "a", "", 100)
 	if err != nil || len(last.Rows) != 5 || last.HasMore {
 		t.Fatalf("last %v %v", last, err)
+	}
+	if got := filepath.Base(last.Rows[len(last.Rows)-1].Path); got != "photo-0.jpg" {
+		t.Fatalf("oldest record last: got %q", got)
 	}
 	search, err := s.page(ctx, "a", "PHOTO-104", 0)
 	if err != nil || len(search.Rows) != 1 {

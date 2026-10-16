@@ -149,6 +149,32 @@ test('album selection waits for a nonblank name and confirmation', async () => {
   assert.equal(selection.albumName.value, '')
 })
 
+test('existing album identifiers require and forward a separate display name', async () => {
+  const { selection, calls } = setup({ startUpload: async (...args) => calls.push(['upload', ...args]) })
+  selection.mode.value = 'album'
+  await selection.choose('files')
+  selection.albumName.value = 'AF1QipExisting'
+  await selection.confirmAlbum()
+  assert.equal(calls.some(call => call[0] === 'upload'), false)
+
+  selection.albumDisplayName.value = 'Family photos'
+  await selection.confirmAlbum()
+  assert.deepEqual(calls.slice(-4), [
+    ['account', 'test@example.com'], ['album', 'AF1QipExisting'], ['auto', false],
+    ['upload', ['/photos/one.jpg', '/photos/two.mp4'], false, 'Family photos'],
+  ])
+})
+
+test('plain album names do not acquire a separate display name', async () => {
+  const { selection, calls } = setup({ startUpload: async (...args) => calls.push(['upload', ...args]) })
+  selection.mode.value = 'album'
+  await selection.choose('files')
+  selection.albumName.value = 'Summer trip'
+  selection.albumDisplayName.value = 'Ignored label'
+  await selection.confirmAlbum()
+  assert.deepEqual(calls.at(-1), ['upload', ['/photos/one.jpg', '/photos/two.mp4'], false, ''])
+})
+
 test('cancelling album confirmation leaves backend untouched', async () => {
   const { selection, calls } = setup()
   await selection.drop(['/photos'], 'album')

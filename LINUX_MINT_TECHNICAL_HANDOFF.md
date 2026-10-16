@@ -1,12 +1,189 @@
 # gotohp — Linux Mint technical handoff
 
-Updated: 2026-09-11. Current application version: **1.2.1** (custom local build).
+Updated: 2026-10-07. Current source metadata version: **1.3.3** (local Windows builds; Linux packaging and native Mint acceptance remain pending).
 
 This document supersedes `LINUX_BUILD_HANDOFF.md`. Use the current modified source snapshot, not upstream alone. This handoff does not claim that the latest build has run successfully on Linux Mint.
 
-## Latest source update — phase 4, not yet packaged
+## Current source and release baseline — read first
 
-The source now includes additional edge-case fixes beyond the existing `gotohp-v1.2.1.exe`. Version metadata is still 1.2.1 until the next packaging step; do not assume that executable includes these changes.
+- Private repository: https://github.com/mahbubvy/Gop (renamed from Gophoto-UI).
+- Last identifiable published baseline remains `v1.3.1`; source commit `262a65f34f0c0b31ea4dff2de950e02e1c40d542`. The current workspace contains additional local changes after that tag; do not assume they are published.
+- Current Windows test artifact: `bin/gotohp-v1.3.3-saved-album-sort-export.exe`, title suffix `Saved Albums Sort and Export`.
+- Current artifact SHA256: `ADBE9224D94417FAF00A4326548A6420C673CCA786F46AAE2598FFB572FF9160`.
+- This is a local labeled build with 1.3.3 file metadata, not a confirmed GitHub release.
+- Main workspace is still not a Git checkout. `.publish-gophoto/` is a separate
+  publishing clone, not the development source. Do not copy it into a Linux bundle.
+- Obtain the private tagged source through an authorized checkout or transfer
+  the current source folder. Do not substitute upstream: it lacks these changes.
+- Do not push to GitHub or publish a release unless explicitly requested.
+  Upstream build/release workflows now require manual dispatch.
+- The original UI edge-case changes and all five local-record implementation/
+  packaging phases are included in Windows releases. Native Linux acceptance
+  remains outstanding; phase numbers from older discussions are historical.
+
+### Changes after v1.3.1 — current implementation snapshot
+
+These are present in the current source, but have **not** been verified on Mint.
+Some v1.3.3 Windows binaries were local feature builds distinguished with a
+`main.buildLabel`; this is not evidence of a published v1.3.3 release/tag.
+
+- **Existing-album display names:** `AF1Qip...` remains the remote album ID.
+  The user can provide a separate local display name. Saved-name lookup is
+  account-scoped and takes precedence over Recent Albums and Album History.
+  Names are UI labels only; the upload manager still passes the ID to the
+  existing album API. No album rename or remote album listing is performed.
+- **Saved Albums:** a persistent local list, separate from the 14-item Recent
+  Albums list. Explicitly save from the existing-ID entry or Recent Albums;
+  add, rename, select, and remove shortcuts. There is no Saved list cap or
+  expiry. Removal deletes only the local shortcut, never the Google Photos
+  album. Selection routes through the same existing album-ID upload flow.
+- **Saved Albums sort/export/selection update (local build):** defaults to
+  Recently added (newest first, reversing the locally persisted insertion
+  order) or can sort alphabetically by display name, case-insensitively. Export
+  opens the native Save File dialog and writes JSON with `schemaVersion: 1`,
+  `exportedAt`, and an `albums` array of `{albumId, albumName}` pairs in the
+  currently displayed order. The export does not include account/email data.
+  The selected row's entire card receives green background/border styling and
+  exposes `aria-pressed`; this is only a visual/accessible selection update.
+  No backend schema, account storage, upload routing, or Google Photos behavior
+  changed.
+- **Importing that export on another PC:** the current app has no JSON import
+  button, so the export is a transfer/reference file, not a directly loadable
+  backup. Copy the JSON to Mint, open gotohp, select the account that owns the
+  album IDs, then open Home → Saved Albums. For each object in `albums`, paste
+  `albumId` into **Album identifier**, `albumName` into **Display name**, and
+  choose **Save album**. Repeat for each entry. Saving through the UI validates
+  IDs, updates an existing matching shortcut instead of duplicating it, and
+  stores the list only under the selected account. Do not hand-edit `gotohp.config`
+  for this workflow. Import is manual and one entry at a time; implementing a
+  bulk JSON importer would be a separate feature.
+- **Per-account avatars:** selected account uses a 72px avatar; dropdown rows
+  use 24px thumbnails. Upload a local PNG/JPEG/GIF up to 5 MiB (decoded image
+  limit 20 MP). Avatar bytes are copied to app data, not uploaded or logged;
+  deleting an account removes its avatar.
+- **Per-account app background:** Settings supports a local solid color or
+  PNG/JPEG/GIF image up to 5 MiB, plus reset-to-default. Account switching
+  selects that account's setting. The background is presentation only and is
+  not sent to Google Photos.
+- **Completion screen:** lists basenames of confirmed successful uploads in a
+  bounded scroll area. Failed/cancelled/skipped rows remain in their separate
+  review section; this list does not imply album assignment succeeded.
+- **Upload Records order:** database query returns newest `recorded_at_ns`
+  first, then path for a stable tie-break. Folder groups remain collapsed by
+  default as described below.
+
+Key implementation paths:
+
+| Path | Responsibility / contract |
+| --- | --- |
+| `backend/configmanager.go` | `SavedAlbumsByAccount`, recents/history, per-account background map, and account removal cleanup. Saved-album Wails methods (`GetSavedAlbums`, `SaveSavedAlbum`, `RemoveSavedAlbum`) operate on `AppConfig.Selected`. |
+| `backend/accountavatar.go` | Avatar validation, local storage, data URL retrieval and safe removal. Files are under `filepath.Dir(ConfigPath)/avatars`; SHA-256 of normalized email is the filename. |
+| `backend/appbackground.go` | Account-scoped colors/image hashes; files under `filepath.Dir(ConfigPath)/backgrounds`. Image bytes are content-addressed with SHA-256. |
+| `frontend/src/components/GoogleAccountSelect.vue` | 72px selected avatar and 24px dropdown avatar; image controls are local account-picker actions. |
+| `frontend/src/SettingsPanel.vue` | Background selection/reset controls and settings persistence. |
+| `frontend/src/SavedAlbums.vue` | Saved Album create/rename/select/remove UX, newest/alphabetical sort, JSON export, and full-card selected styling; remove copy explicitly says Google Photos album is untouched. |
+| `frontend/src/utils/savedAlbums.ts` | Pure list sorting and JSON export-shape helpers. Added in the Saved Albums sort/export change. |
+| `frontend/tests/savedAlbums.test.mjs` | Covers sort order, export fields, and Saved Albums controls/selected-card styling. |
+| `frontend/src/utils/albumDisplayName.ts` | For an exact ID match, resolve a readable name in this order: Saved Albums, Recent Albums, then Album History; reject opaque IDs and `Saved album` placeholders. |
+| `frontend/src/UploadComplete.vue` | Successful filename list, album additions, assignment errors and completion controls. |
+| `frontend/src/utils/uploadPresentation.ts` | `uploadedFileName` returns a basename from Windows or Linux paths; tests are in `frontend/tests/uploadPresentation.test.mjs`. |
+| `backend/configmanager_saved_album_test.go` | Persistence/account isolation/upsert/remove and unbounded Saved vs capped Recent behavior. |
+
+### Current verification (Windows development host only)
+
+- `cd frontend && node --test tests/*.test.mjs`: **45 passed**. These are explicit unit/behavior
+  tests; they are not embedded in the app and do not run uploads automatically.
+- `cd frontend && npm run build`: passed Vue type checking and production Vite
+  bundle for the current Saved Albums sort/export UI.
+- Windows GUI executable compiled with Go 1.26.8, `production` build tag,
+  embedded frontend, and local linker label `Saved Albums Sort and Export`.
+  File version metadata remains 1.3.3. Its SHA256 is listed above. This was a
+  compile/metadata check only; it was not launched for a native UI click-through.
+- Focused Go tests for Saved Albums and Recent Albums passed. The most recent
+  full `go test ./backend` run had two failures in
+  `TestRemovingAccountDeletesItsAvatarOnly` and
+  `TestClearAccountAvatarRemovesOnlyThatAccountImage`, both reporting
+  `could not verify local avatar storage`. Investigate on Linux rather than
+  treating the full backend suite as green; all other tests in that run passed.
+- Targeted ESLint on the changed completion files reported no errors. The full
+  project lint has existing formatting warnings; it exits successfully.
+- Latest local EXE build succeeded. No `.deb`, Linux binary, Mint launch, native
+  GTK chooser, or live Mint upload has been verified.
+
+### Local records — new in 1.3.0
+
+The database foundation, worker integration and UI are implemented, not proposals.
+See `LOCAL_UPLOAD_RECORDS_PLAN.md` for contracts and `WINDOWS_V1.3.0_TEST_CHECKLIST.md`
+for tests adaptable to Mint (its version/window descriptions are historical).
+
+- Store: `backend/uploadrecords.go`, using the existing pure-Go
+  `modernc.org/sqlite` driver. No SQLite CLI/server installation is required.
+- Location: `os.UserConfigDir()/gotohp/upload-records.sqlite`; normally
+  `$XDG_CONFIG_HOME/gotohp/upload-records.sqlite` or `~/.config/gotohp/upload-records.sqlite`
+  on Linux. It remains per-user even when credentials use a portable config.
+- Schema version 1. Account + cleaned absolute path is the primary key;
+  matching additionally requires size and modification time (nanoseconds).
+  Preserve case; no content fingerprint or symlink-identity matching is added.
+- Renaming/moving makes a new local candidate. Metadata-preserving replacements
+  may be missed; timestamp-only changes can cause an unnecessary normal check.
+- Records mean historical success, not proof of current remote existence.
+  Prior uploads are not imported automatically. Do not transfer the Windows
+  database to Mint as though its Windows paths were valid Linux identities.
+- `record_uploads` defaults true; `skip_recorded_uploads` defaults false. Both
+  controls are on Upload Records. Turning recording off retains old entries.
+- `backend/uploadrecord_integration.go` wraps ordinary-file workers before
+  hashing. Confirmed success is saved synchronously, with a bounded independent
+  context so cancellation does not strand already completed records.
+- Upload Only skips local matches. Album destinations reuse saved media keys
+  without retransferring. Album errors do not erase transfer success or cause
+  silent reupload. Destination keys are deduplicated before album calls.
+- Force Upload, `startUpload.bypassLocalRecords`, and Delete From Host bypass
+  local skips. Local records must NEVER authorize source deletion. Live Photo
+  work items bypass this layer and retain existing paired-item handling.
+- Account/options/destination are captured per batch; normal upload/auth/device
+  identity behavior is retained. Missing media keys fail explicitly; unavailable
+  databases warn and use the normal upload path. Never delete a corrupt DB.
+- Indexed lookup/write calls are bounded to 256 records. Workers currently
+  commit one success at a time: durable and simple, but benchmark small-file
+  overhead on Mint before claiming maximum throughput.
+- `backend/uploadrecords_ui.go`: GetUploadRecords(account, search, offset),
+  ForgetUploadRecords(account, paths), ExportUploadRecords(account, path),
+  PreviewUploadRecords(paths, id), CancelUploadRecordPreview(id). Regenerate bindings.
+- List pages have 50 entries grouped by folder. Explicit-submit substring search
+  and deep OFFSET pages can be slower than indexed exact matching. Folder counts
+  describe this page, not all historical entries in the folder.
+- CSV exports all records for the selected account, with paths/timestamps but
+  without remote media keys or credentials. Forget requires confirmation and
+  only removes local rows, not media/files/Album History.
+- All source entry points share a cancelable match preview. Zero matches
+  continue automatically; matches offer Cancel, normal local skipping, or Ignore
+  local records this time. Album reuse intent is explicit. Worker checks run
+  again, so file edits can change counts after preview. Request IDs prevent stale
+  preview responses from starting an abandoned selection.
+- This does not make the earlier candidate-count scan cancelable; that separate
+  preparatory scan still precedes the record preview.
+
+### UI refinements — 1.3.1
+
+- `frontend/src/UploadRecords.vue` has native `<details>/<summary>` folder groups,
+  collapsed by default, keyboard operable, with visible per-page counts. Opening
+  reveals selectable file rows. Search/page changes create fresh collapsed groups.
+- `maxRecentAlbumsPerAccount` is now **14**, not 8. It fills as albums are used;
+  older entries discarded under the previous limit are not automatically restored.
+- Initial window is **800 × 900**; minimum 400 × 600, maximum 800 × 900.
+  Test work-area fit on Mint, including panels/scaling/small displays.
+- Shared debug button uses z-index 60; notification toaster overrides its library
+  default with z-index 40 and 64px desktop/mobile bottom offsets. Sheets use 50.
+  Keep modal button instances inside Settings/account-setup focus traps. Test
+  warnings with the button on every screen, not just Home. Native OS dialogs
+  necessarily appear above in-app content.
+- Debug schema remains **3**. Screen names include upload-records/record-review;
+  local skips retain `local-record` in skippedDetails. Completion separates local
+  records from other skips and actual new upload success.
+
+## Historical edge-case update — included since 1.3.0
+
+The following fixes were originally unbuilt changes after 1.2.1. They are now included in 1.3.0 and 1.3.1.
 
 - Backend `FileUploadResult.Cancelled` identifies errors that satisfy `errors.Is(err, context.Canceled)`. The frontend records these separately in `results.cancelled`, not `results.fail`; unrelated errors remain failures. Transfer/authentication algorithms are unchanged.
 - Completion shows Cancelled and No final result counts. The latter is `max(0, Total - processed)` and does not assert that those items never began. Debug export is now schema **3**, with cancelled file basenames and the same counts.
@@ -17,7 +194,7 @@ The source now includes additional edge-case fixes beyond the existing `gotohp-v
 
 New user evidence from `log/3 auto album.json` (Windows 1.2.1): 30 uploaded, 0 failed, three completed albums with 8/13/9 additions. `log/upload cancel.json`: cancel requested, 8 cancellation-category errors and 2 items without a final result, 0 successful uploads. This supports working stop behavior but does not verify preservation of earlier successes in that particular batch. These user logs are private, not release contents.
 
-Older sections below describe the packaged 1.2.1 baseline; this update takes precedence for the current source's cancellation classification, validation and schema version. Native tests of these new source changes remain pending.
+The current baseline above takes precedence over historical evidence and older test counts. Native Mint testing remains pending.
 
 ## 1. Objective and boundaries
 
@@ -39,11 +216,17 @@ Continue development or produce a Linux Mint GUI `.deb` containing the current U
 | 1.1.1 | Restored all four drag destinations, including Recent Album | Built for Windows; dedicated retest not recorded |
 | 1.2.0 | Phase 5 history/log/accessibility changes | **Known broken startup: blank window. Do not distribute** |
 | 1.2.1 | Fixed initialization-order crash | Startup regression test and production builds pass; user confirmation of native launch not yet recorded |
+| 1.3.0 | Local records, optional skip/reuse, history UI, cancellation safeguards and toast layering | Automated checks and Windows packaging; live acceptance pending |
+| 1.3.1 | Collapsed folders, 14 recent albums, larger initial window | 33 frontend tests and backend production tests pass; Windows build/version verified |
+| 1.3.2 | Local display names for existing album IDs; album-name handoff correction | Windows executable exists; Mint not tested |
+| 1.3.3 | Account-specific backgrounds; subsequent local builds also add avatars, Saved Albums, uploaded filenames, and Saved Albums sort/export controls | Version metadata is 1.3.3; no later published tag confirmed. Current labeled Windows EXE listed above |
 
-Latest Windows artifact: `gotohp-v1.2.1.exe`, title `gotohp v1.2.1 — Startup fix`.
-No current Linux `.deb` has been built or verified in this task.
+Latest Windows artifact: `bin/gotohp-v1.3.3-saved-album-sort-export.exe`, title
+`gotohp v1.3.3 — Saved Albums Sort and Export`. Its build label is a local
+artifact identifier, not a semver change. No current Linux binary or `.deb`
+has been built or verified.
 
-Phases 1–3 and phase 5 are implemented. Phase 4 was not completed as a dedicated pass. Phase 6 native/platform acceptance testing remains pending.
+Implementation is complete through local-record phase 5 Windows packaging. Native/platform acceptance testing remains pending.
 
 ## 3. Product behavior to preserve
 
@@ -57,6 +240,10 @@ Phases 1–3 and phase 5 are implemented. Phase 4 was not completed as a dedicat
 - Auto Album scans and previews actual containing-folder names before confirmation. It follows current recursion/filter/Live Photo classification settings. A new album is created only for folders with eligible results. Identically named folders can create distinct identically titled albums.
 - Settings controls recursive scanning; UI must not implement separate recursion semantics.
 - Album History is directly below Settings on Home, not inside Settings.
+- **Saved Albums** is also a separate Home destination. It contains explicit
+  local bookmarks for existing album IDs and is not a remote album browser.
+- Account avatars and background selection are entirely local UI state. Do not
+  couple them to upload/auth payloads, album APIs or debug logs.
 
 ### Drag and drop — regression-sensitive
 
@@ -78,6 +265,10 @@ Phases 1–3 and phase 5 are implemented. Phase 4 was not completed as a dedicat
 - Persistent completion page until Go back home, with success/failure/skipped counts, timestamp, and appropriate cancellation/empty/error heading.
 - Albums updated contains confirmed additions, including partial additions before album failure/cancellation. Split albums have separate counts rather than the cumulative count repeated for each.
 - On assignment failure, explain that successfully uploaded files are already in the library. Do not imply the media transfer failed or that no album was selected.
+- The **Uploaded files** section derives only from `state.results.success` and
+  displays filenames, not full paths. It is capped at 12rem high with its own
+  scroll area for large batches. Do not mix album-add failures with file-upload
+  failures or list skipped/failed files as successful.
 
 ## 4. Code map and contracts
 
@@ -93,15 +284,17 @@ Phases 1–3 and phase 5 are implemented. Phase 4 was not completed as a dedicat
 | `frontend/src/Upload.vue` | Active transfer, folder and assignment progress |
 | `frontend/src/UploadComplete.vue` | Persistent result screen and issue details |
 | `frontend/src/AlbumHistory.vue` | Account context, full names, operation/count/time, loading/empty/error/retry states |
+| `frontend/src/SavedAlbums.vue` | Local per-account album-ID bookmarks and select/add/rename/remove UI |
 | `frontend/src/utils/debugLog.ts` | Filename redaction and inferred error categories; deliberately avoids exporting raw server errors |
 | `frontend/src/components/DebugLogButton.vue` | Shared floating export button |
 | `frontend/src/components/GoogleAuthSetup.vue` | Existing auth UI; added slot/spacer so log button is inside modal focus boundary; no auth algorithm changes |
 | `frontend/src/index.css` | Theme, visible keyboard focus, layout minimums |
 | `backend/configmanager.go` | Persistent per-account recents/history, diagnostic file export |
+| `backend/accountavatar.go`, `backend/appbackground.go` | Local account image and background persistence/validation; no Google Photos calls |
 | `backend/album.go` | Existing key-vs-title behavior, batching and album splitting; do not replace API calls |
 | `frontend/bindings/` | Generated Wails TypeScript; regenerate, do not hand-edit |
 
-Selection order: await `SetSelected(account)` -> `SetAlbumName(nameOrKey or empty)` -> `SetAlbumAutoMode(boolean)` -> `Events.Emit('startUpload', {files})`.
+Selection order: await `SetSelected(account)` -> `SetAlbumName(nameOrKey or empty)` -> `SetAlbumAutoMode(boolean)` -> optional record review -> `Events.Emit('startUpload', {files, bypassLocalRecords})`. Cancelling review must not dispatch or leave selection locked.
 
 Backend starts with a preflight `uploadStart` and emits another after classification. `UploadBatchStart` fields include `Total`, `TotalBytes`, `AlbumName`, `AlbumAutoMode`, `AutoAlbumFolders`, `WorkPaths`. WorkPaths contains primary work-item paths; Live Photos can represent paired sources, so counts are work items rather than necessarily physical filesystem files.
 
@@ -113,14 +306,28 @@ The pending readable Recent Album name must survive both startup events. It is a
 
 ## 5. Persistence, history and logs
 
-- `RecentAlbumsByAccount`: max 8 per account, `albumId`, `albumName`, `lastUsedAt` (Unix seconds). Successful automatic-folder albums are included.
+- `RecentAlbumsByAccount`: max 14 per account, `albumId`, `albumName`, `lastUsedAt` (Unix seconds). Successful automatic-folder albums are included.
 - `AlbumHistoryByAccount`: max 40 per account, `albumId`, `albumName`, `itemsAdded`, `operation`, `createdAt` (Unix seconds).
-- Raw keys display as Saved album. Legacy entries lacking a readable name cannot magically recover it; no remote lookup exists.
+- `SavedAlbumsByAccount`: no automatic cap, each row has `albumId` and `albumName`. The YAML/Koanf key is `saved_albums_by_account`; the config map is hidden from generic JSON serialization. Save/rename/remove methods operate on `AppConfig.Selected`; call `SetSelected` before cross-account operations.
+- `AF1Qip...` IDs remain authoritative. A local alias never renames or creates the remote album. For display, a saved alias overrides Recent and History labels. Saved-album shortcut deletion does not delete remote data and does not delete the History/Recent row.
+- Entering an existing album ID in the upload flow requires a separate Display name. The label may be prefetched from matching Saved/Recent/History data. Only the ID is sent through `SetAlbumName` to the existing upload path. Share URLs are not parsed by this feature.
+- An ID associated with the wrong Google account can return a 404 while the files have already uploaded to that account's library. The latest user log confirmed this was an account mismatch. Do not auto-retry the files or create an album on 404; verify the intended account/ID first.
+- A plain album name still means “create a new album,” even if a matching title exists. No remote title matching or account-wide album listing exists.
+- If no readable local name is known, IDs show as `Saved album`. Legacy entries cannot recover a human name without the user adding an alias; no remote lookup exists.
 - History and recent writes currently originate from frontend album-completion events. Partial album additions appear in results, but partial/error paths do not currently guarantee a persisted history entry. Review this before claiming complete audit coverage.
 - Normal Linux configuration is under the OS config directory, usually `~/.config/gotohp/gotohp.config` (XDG applies). An executable-adjacent `gotohp.config` takes precedence. Check `backend/configmanager.go` for exact resolution; never log credential contents.
 - Config writes use existing persistence; do not reset data for a UI upgrade.
+- Avatar files are stored in sibling directory `avatars/`, named by SHA-256 of
+  lower-cased trimmed email; background images are in `backgrounds/`, named by
+  content SHA-256. Both are under `filepath.Dir(ConfigPath)`, with directories
+  mode 0700 and files mode 0600. Avatar/background associations normalize the
+  account email; Saved/Recent/History maps use the selected account key. Account
+  removal clears that account's background entry and avatar, but intentionally
+  retains album history/shortcuts. If transferring local UI state between
+  machines, config and image directories are separate pieces of private app
+  data; never copy or share credentials/debug data casually.
 
-Debug export schema v2 snapshots state **before** opening the save dialog. It includes application version, screen, viewport dimensions, selection mode, cancellation request flag, timestamps, byte/work counts, per-folder counts, per-album additions, worker status/attempt, and inferred error categories.
+Debug export schema v3 snapshots state **before** opening the save dialog. It includes application version, screen, viewport dimensions, selection mode, cancellation request flag, timestamps, byte/work counts, per-folder counts, per-album additions, worker status/attempt, and inferred error categories.
 
 It excludes account addresses, full local paths, album keys and raw server errors. File/album names remain potentially personal. Categories include cancelled, timeout, authentication-or-permission, not-found, rate-limited, network, file-or-metadata, server-error, other-error; these are inferred summaries, not exact backend codes. This is a state snapshot, not a full chronological network trace.
 
@@ -154,9 +361,22 @@ Pinned/current source:
 
 **Unknown:** target Mint release, architecture, desktop/session type. Determine these before picking a builder. Build against libraries/glibc compatible with the target; do not assume a newer builder binary runs on an older Mint installation. WebView2 is Windows-only and is not the Mint solution.
 
-**Metadata mismatch:** `build/windows/info.json` is 1.2.1, but `build/linux/nfpm/nfpm.yaml` still has `version: "0.10.0"`, release 1. Align the GUI package version before producing a `.deb`. The frontend also imports info.json for log version; update metadata **before rebuilding frontend**. CLI packaging has separate config; inspect it if building CLI.
+**Metadata mismatch:** `build/windows/info.json` is now 1.3.3, but
+`build/linux/nfpm/nfpm.yaml` still has `version: "0.10.0"`, release 1, and
+`README.md` still headlines v1.3.1. Before making a Linux package, decide and
+align the Linux package version with the intended artifact (current code
+metadata is 1.3.3); do this before rebuilding frontend because debug logs import
+the embedded info file. CLI packaging has separate config; inspect it if making
+a CLI artifact. Asset regeneration can overwrite custom metadata/icons using
+`build/config.yml`: inspect and align that source before running it. Do not
+blindly change package identity to Gop just because the GitHub repository was
+renamed.
 
-`main.buildLabel` adds a human-readable title suffix. The standard Linux task does not currently pass a custom label. Either deliberately add it to Linux build flags or accept a plain `gotohp v1.2.1` title; do not call it an upstream release.
+`build/windows/info.json` currently describes account backgrounds. Local
+Windows test builds set a display-only linker label such as `Saved-Albums` or
+`Uploaded-Filenames`; the normal Linux task does not set this label. Either
+pass a clear local test label via `-X main.buildLabel=...` or use the plain
+version title. Do not represent the test label as an upstream release.
 
 ## 8. Transfer and native build procedure
 
@@ -224,11 +444,11 @@ Inspect with `dpkg-deb --info ACTUAL.deb`, `dpkg-deb --contents ACTUAL.deb`, and
 
 Verified during Windows development:
 
-- Frontend typecheck/production build; latest 1.2.1 build passed.
-- 21 selection/presentation/debug tests passed at phase 5; startup regression test added and passed in 1.2.1 (22 tests across the current four test files when run together).
-- ESLint quiet check passed before the startup fix; existing style warnings are not a clean all-warnings result.
-- Go CLI-tag tests passed after preview changes, including `backend/upload_preview_test.go`.
-- Windows artifacts compiled and reported their version. Native Mint rendering, GTK dialogs and `.deb` upgrade remain unverified.
+- Current frontend `npm run build` passed (Vue type checking + production Vite build).
+- Current `node --test tests/*.test.mjs` run: 45/45 passed, including Saved Album sorting/export fields/UI checks, naming helpers, successful-filename basename handling, upload selection, local record review, and startup-state checks. Tests run only when invoked; they are not embedded or auto-triggered by the app.
+- Focused Go Saved/Recent Album tests passed. A full backend run did not pass cleanly: the two avatar cleanup tests listed above failed on the Windows development host. These need investigation on the Linux builder.
+- Targeted ESLint for `SavedAlbums.vue` and `utils/savedAlbums.ts` reported zero errors; the existing component has 79 formatting warnings. Full project lint was not rerun for this build.
+- Windows artifact compiled; latest artifact and SHA256 are listed above. Native Mint rendering, Save File dialog, GTK dialogs, and `.deb` upgrade remain unverified.
 
 User-provided Windows logs:
 
@@ -246,14 +466,23 @@ Mint acceptance checklist:
 4. New title creates an album with correct count. Repeated title makes another album; Recent Album reuses one.
 5. Three folders -> preview three destinations -> progress three rows -> results correct additions; test recursive nested folders and equal basenames.
 6. Drag onto each destination, especially Recent Album. Also test a zone-less Linux drop and direct drops on the recent screen.
-7. Cancel media transfer and album assignment separately; export schema v2 logs and compare confirmed files/albums in Google Photos. Avoid blindly retrying files already uploaded.
+7. Cancel media transfer and album assignment separately; export schema v3 logs and compare confirmed files/albums in Google Photos. Avoid blindly retrying files already uploaded.
 8. Account switching does not expose another account's recent/history entries.
 9. History loading/empty/error/full states, long names, local timestamps, Created/Updated and count accuracy.
 10. Resize between compact and maximum dimensions; check scrolling, no hidden controls/overlap, Tab/Shift+Tab/Enter, modal focus and export button in every screen.
 11. Logs identify settings/account/history/review/upload/result screens and the correct version. Inspect privately for accidental sensitive content before sharing.
 12. Install over the old package without losing settings; verify rollback with the retained package.
 
-Remaining gaps: native visual/accessibility validation, dedicated phase-4 empty/unsupported/duplicate-submission testing, cancellation vs failure classification, persistence of partial album updates, and old Saved album entries without a known name. Resolve within explicit scope; do not silently expand into remote album fetching or transport changes.
+13. Upload Records: enable recording, upload a few disposable files, reopen and verify persistence. Enable skipping and repeat; all-recorded Upload Only must complete with no transfer. Mix new and recorded files, then use New/Recent/three-folder Auto albums and confirm membership without retransferring local matches.
+14. Rename/move/replace a file; test account isolation, Force Upload and explicit bypass. Keep Delete From Host off for routine testing. Confirm local records never cause local deletion. Verify a success remains recorded if a later file or album operation fails/cancels.
+15. Test collapsed folders, keyboard expansion, page/search reset, visible per-page counts, CSV output and confirmed forget. Forget must not delete media or files. Test unwritable/corrupt test databases without touching real user history. Test cancelling a preview then immediately starting another selection.
+16. Verify 800×900 default fits the Mint work area, smaller resizing, and debug button access above warnings inside every screen/modal. Confirm recent capacity reaches 14 as new albums are used.
+17. Saved Albums: save, rename, select and remove a local shortcut; verify data survives restart and does not cross accounts. Test Recently added (newest first) and case-insensitive Alphabetical sorting. Export JSON and verify each `albumId` stays paired with its `albumName`, export order follows the selected sort, and no account/email is included. Transfer the export to Mint and manually re-enter each pair through Saved Albums; verify the selected account receives the shortcuts and duplicate IDs update their local name. There is no bulk JSON import control in this build. Check removal leaves the remote album untouched. Test same ID under another account and confirm a 404 is displayed as an album error without reporting transfer failure. Confirm the selected whole card is visibly green and keyboard/screen-reader state exposes `aria-pressed`.
+18. Existing-ID display alias: enter an AF1Qip key and local label, upload to the intended account, and verify progress/results/recent/history use that label while the Google Photos title stays unchanged. Confirm plain text title still creates a new album.
+19. Account visuals: set different 72px avatars and background color/image on two test accounts, switch between them, restart, reset one background, and remove one account. Confirm image files persist locally with the app config and no image/avatar content is exported in debug logs.
+20. Completion file list: upload a mix of successful, failed, skipped and cancelled files; only successful basenames should appear in the scrollable list. Confirm same-named source files still appear as separate rows; test long names and a large batch without hiding Go back home.
+
+Remaining gaps: native visual/accessibility and live-upload validation, native verification of empty/duplicate/cancellation safeguards, persistence of partial album updates in Album History, and old Saved album entries without a known name. Local-record implementation is present but still needs Mint acceptance and small-file performance testing. Full backend tests currently include two failing avatar cleanup tests on the Windows host. Do not silently expand into remote album fetching or transport changes.
 
 ## 11. Earlier transport fix and speed observations
 

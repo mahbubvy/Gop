@@ -17,6 +17,7 @@ export {
     FilesDroppedEvent,
     PreflightWarning,
     RecentAlbum,
+    SavedAlbum,
     StartUploadEvent,
     ThreadStatus,
     UploadBatchStart,

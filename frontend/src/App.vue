@@ -21,9 +21,11 @@ import SettingsPanel from "./SettingsPanel.vue"
 import Upload from './Upload.vue'
 import UploadComplete from './UploadComplete.vue'
 import AlbumHistory from './AlbumHistory.vue'
+import SavedAlbums from './SavedAlbums.vue'
 import UploadRecords from './UploadRecords.vue'
 import { uploadManager } from './utils/UploadManager'
 import { uploadModes, useUploadSelection } from './utils/uploadSelection'
+import { findAlbumDisplayName, isAlbumIdentifier } from './utils/albumDisplayName'
 import { errorCategory, safeName } from './utils/debugLog'
 import { folderCounts } from './utils/uploadPresentation'
 import versionInfo from '../../build/windows/info.json'
@@ -41,6 +43,11 @@ interface RecentAlbum {
   lastUsedAt: number
 }
 
+interface SavedAlbum {
+  albumId: string
+  albumName: string
+}
+
 type RecentAlbumEntryMode = 'normal' | 'drag-drop'
 
 // Drag state for the three drop zones
@@ -48,6 +55,8 @@ const isDraggingFiles = ref(false)
 
 const selectedOption = ref('')
 const options = ref<string[]>([])
+const accountAvatars = ref<Record<string, string>>({})
+const isManagingAvatar = ref(false)
 const accountNeedsTokenBinding = ref<Record<string, boolean>>({})
 const tokenBindingEmail = ref('')
 const isExtractingTokenBinding = ref(false)
@@ -59,6 +68,12 @@ const recentAlbums = ref<RecentAlbum[]>([])
 const selectedRecentAlbum = ref<RecentAlbum | null>(null)
 const recentAlbumEntryMode = ref<RecentAlbumEntryMode>('normal')
 const pendingRecentSources = ref<string[]>([])
+const isSavedAlbumScreen = ref(false)
+const savedAlbums = ref<SavedAlbum[]>([])
+const selectedSavedAlbum = ref<SavedAlbum | null>(null)
+const savedAlbumEntryMode = ref<RecentAlbumEntryMode>('normal')
+const pendingSavedSources = ref<string[]>([])
+const isSavingAlbum = ref(false)
 const isAlbumHistoryOpen = ref(false)
 const isUploadRecordsOpen = ref(false)
 const recordReviewOpen = ref(false)
@@ -70,7 +85,40 @@ let recordReviewGeneration = 0
 let recordReviewId = ''
 const isSettingsOpen = ref(false)
 const isExportingLog = ref(false)
-const currentScreen = computed(() => isAccountSetupOpen.value ? 'account-setup' : isSettingsOpen.value ? 'settings' : uploadState.isUploading ? 'uploading' : uploadState.completionVisible ? 'upload-results' : recordReviewOpen.value ? 'record-review' : isUploadRecordsOpen.value ? 'upload-records' : isAlbumHistoryOpen.value ? 'album-history' : isRecentAlbumScreen.value ? 'recent-albums' : showAlbumInput.value ? 'selection-review' : 'home')
+const appBackgroundMode = ref('default')
+const appBackgroundColor = ref('#101214')
+const appBackgroundImage = ref('')
+const appBackgroundStyle = computed(() => {
+  if (appBackgroundMode.value === 'image' && appBackgroundImage.value) {
+    return {
+      backgroundColor: '#101214',
+      backgroundImage: `linear-gradient(rgba(8, 10, 12, 0.56), rgba(8, 10, 12, 0.56)), url("${appBackgroundImage.value}")`,
+      backgroundPosition: 'center',
+      backgroundSize: 'cover',
+    }
+  }
+  if (appBackgroundMode.value === 'color') {
+    return {
+      backgroundColor: appBackgroundColor.value,
+      backgroundImage: 'linear-gradient(rgba(8, 10, 12, 0.48), rgba(8, 10, 12, 0.48))',
+    }
+  }
+  return {}
+})
+const currentScreen = computed(() => isAccountSetupOpen.value ? 'account-setup' : isSettingsOpen.value ? 'settings' : uploadState.isUploading ? 'uploading' : uploadState.completionVisible ? 'upload-results' : recordReviewOpen.value ? 'record-review' : isUploadRecordsOpen.value ? 'upload-records' : isAlbumHistoryOpen.value ? 'album-history' : isSavedAlbumScreen.value ? 'saved-albums' : isRecentAlbumScreen.value ? 'recent-albums' : showAlbumInput.value ? 'selection-review' : 'home')
+
+async function refreshAppBackground() {
+  try {
+    const config = await ConfigManager.GetSettings()
+    appBackgroundMode.value = config.backgroundMode || 'default'
+    appBackgroundColor.value = config.backgroundColor || '#101214'
+    appBackgroundImage.value = appBackgroundMode.value === 'image'
+      ? await ConfigManager.GetAppBackgroundImageDataURL()
+      : ''
+  } catch (error) {
+    console.warn('Could not load saved app background:', error)
+  }
+}
 
 const selection = useUploadSelection({
   reviewAuto: true,
@@ -83,17 +131,21 @@ const selection = useUploadSelection({
   setAlbumName: name => ConfigManager.SetAlbumName(name),
   setAlbumAutoMode: auto => ConfigManager.SetAlbumAutoMode(auto),
   reviewRecords: files => reviewLocalRecords(files),
-  startUpload: (files, bypassLocalRecords) => {
-    uploadManager.setNextAlbumDisplayName(isRecentAlbumScreen.value ? selectedRecentAlbum.value?.albumName || '' : '')
+  startUpload: (files, bypassLocalRecords, displayName) => {
+    uploadManager.setNextAlbumDisplayName(isRecentAlbumScreen.value ? selectedRecentAlbum.value?.albumName || '' : isSavedAlbumScreen.value ? selectedSavedAlbum.value?.albumName || '' : displayName || '')
     return Events.Emit('startUpload', { files, bypassLocalRecords: !!bypassLocalRecords })
   },
   onError: error => toast.error('Could not prepare upload', {
     description: error instanceof Error ? error.message : String(error),
   }),
 })
-const { mode: uploadMode, busy: selectionBusy, pendingFiles, albumName: albumNameOrKey } = selection
+const { mode: uploadMode, busy: selectionBusy, pendingFiles, albumName: albumNameOrKey, albumDisplayName } = selection
+const albumIdentifier = computed(() => isAlbumIdentifier(albumNameOrKey.value.trim()))
+const albumDisplayNameEdited = ref(false)
+let albumNameLookupTimer: ReturnType<typeof setTimeout> | undefined
+let albumNameLookupGeneration = 0
 const showAlbumInput = computed(() => pendingFiles.value.length > 0)
-const controlsBusy = computed(() => selectionBusy.value || selection.starting.value || !!removingAccount.value || isExtractingTokenBinding.value || isLoadingRecentAlbums.value)
+const controlsBusy = computed(() => selectionBusy.value || selection.starting.value || !!removingAccount.value || isExtractingTokenBinding.value || isLoadingRecentAlbums.value || isManagingAvatar.value)
 const sourceNames = computed(() => selection.previewFolders.value.map(path => ({ path, name: path.split(/[\\/]/).filter(Boolean).pop() || path })))
 // Register after all screen dependencies exist: watch evaluates its source now.
 watch(currentScreen, async () => {
@@ -105,11 +157,35 @@ watch(currentScreen, async () => {
     heading.focus({ preventScroll: true })
   }
 })
+watch([albumNameOrKey, selectedOption, uploadMode], ([rawIdentifier]) => {
+  if (albumNameLookupTimer) clearTimeout(albumNameLookupTimer)
+  const generation = ++albumNameLookupGeneration
+  albumDisplayNameEdited.value = false
+  albumDisplayName.value = ''
+  const albumID = rawIdentifier.trim()
+  const account = selectedOption.value
+  if (uploadMode.value !== 'album' || !account || !isAlbumIdentifier(albumID)) return
+
+  albumNameLookupTimer = setTimeout(async () => {
+    try {
+      await ConfigManager.SetSelected(account)
+      if (generation !== albumNameLookupGeneration || selectedOption.value !== account) return
+      const [recent, history, saved] = await Promise.all([ConfigManager.GetRecentAlbums(), ConfigManager.GetAlbumHistory(), ConfigManager.GetSavedAlbums()])
+      if (generation !== albumNameLookupGeneration || albumNameOrKey.value.trim() !== albumID || albumDisplayNameEdited.value) return
+      albumDisplayName.value = findAlbumDisplayName(albumID, recent, history, saved)
+    } catch (error) {
+      console.warn('Could not look up the saved local album name:', error)
+    }
+  }, 250)
+})
 watch(() => uploadState.completionVisible, visible => {
   if (visible) {
     isRecentAlbumScreen.value = false
     selectedRecentAlbum.value = null
     pendingRecentSources.value = []
+    isSavedAlbumScreen.value = false
+    selectedSavedAlbum.value = null
+    pendingSavedSources.value = []
   }
 })
 
@@ -117,9 +193,11 @@ watch(selectedOption, async (newValue) => {
   isUploadRecordsOpen.value = false
   if (newValue) {
     closeRecentAlbums()
+    closeSavedAlbums()
     try {
       await ConfigManager.SetSelected(newValue)
       await updateTokenBindingPrompt(newValue)
+      await refreshAppBackground()
       console.log('Successfully updated selected value:', newValue)
     } catch (error) {
       console.error('Failed to update selected value:', error)
@@ -170,24 +248,74 @@ async function refreshCredentials() {
   try {
     const state = await ConfigManager.GetAccounts()
     const nextNeedsTokenBinding: Record<string, boolean> = {}
+    const nextAccountAvatars: Record<string, string> = {}
     const nextOptions = state.accounts.map(account => {
       nextNeedsTokenBinding[account.email] = account.needsTokenBinding
+      if (account.avatarDataURL) nextAccountAvatars[account.email] = account.avatarDataURL
       return account.email
     })
 
     accountNeedsTokenBinding.value = nextNeedsTokenBinding
+    accountAvatars.value = nextAccountAvatars
     options.value = nextOptions
     selectedOption.value = state.selected || ''
+    if (state.selected) await ConfigManager.SetSelected(state.selected)
     if (state.selected) {
       await updateTokenBindingPrompt(state.selected)
     } else {
       tokenBindingEmail.value = ''
     }
+    await refreshAppBackground()
   } catch (error) {
     console.error('Failed to refresh Google accounts:', error)
     toast.error('Could not refresh Google accounts', {
       description: error instanceof Error ? error.message : String(error),
     })
+  }
+}
+
+async function setAccountAvatar() {
+  const email = selectedOption.value
+  if (!email || isManagingAvatar.value) return
+
+  isManagingAvatar.value = true
+  try {
+    const path = await Dialogs.OpenFile({
+      Title: `Choose avatar for ${email}`,
+      CanChooseFiles: true,
+      CanChooseDirectories: false,
+      AllowsMultipleSelection: false,
+      Filters: [{ DisplayName: 'Image files (PNG, JPEG, GIF)', Pattern: '*.png;*.jpg;*.jpeg;*.gif' }],
+    })
+    if (!path || Array.isArray(path)) return
+
+    await ConfigManager.SetAccountAvatar(email, path)
+    await refreshCredentials()
+    toast.success('Account avatar saved on this PC.')
+  } catch (error) {
+    toast.error('Could not save account avatar', {
+      description: error instanceof Error ? error.message : String(error),
+    })
+  } finally {
+    isManagingAvatar.value = false
+  }
+}
+
+async function clearAccountAvatar() {
+  const email = selectedOption.value
+  if (!email || isManagingAvatar.value) return
+
+  isManagingAvatar.value = true
+  try {
+    await ConfigManager.ClearAccountAvatar(email)
+    await refreshCredentials()
+    toast.success('Account avatar removed.')
+  } catch (error) {
+    toast.error('Could not remove account avatar', {
+      description: error instanceof Error ? error.message : String(error),
+    })
+  } finally {
+    isManagingAvatar.value = false
   }
 }
 
@@ -224,7 +352,11 @@ async function removeCredentials(email: string) {
     return true
   } catch (error) {
     console.error('Failed to remove credentials:', error)
-    toast.error('Failed to remove credentials.')
+    await refreshCredentials()
+    const avatarCleanupFailed = error instanceof Error && error.message.startsWith('account was removed, but its local avatar could not be deleted:')
+    toast.error(avatarCleanupFailed ? 'Account removed, but its local avatar could not be deleted.' : 'Failed to remove credentials.', {
+      description: error instanceof Error ? error.message : String(error),
+    })
     return false
   } finally {
     removingAccount.value = ''
@@ -243,7 +375,9 @@ async function openRecentAlbums(entryMode: RecentAlbumEntryMode, sources: string
   recentAlbumEntryMode.value = entryMode
   pendingRecentSources.value = [...sources]
   try {
-    recentAlbums.value = await ConfigManager.GetRecentAlbums()
+    const [recent, saved] = await Promise.all([ConfigManager.GetRecentAlbums(), ConfigManager.GetSavedAlbums()])
+    recentAlbums.value = recent
+    savedAlbums.value = saved
     isRecentAlbumScreen.value = true
   } catch (error) {
     console.error('Failed to load recent albums:', error)
@@ -254,11 +388,27 @@ async function openRecentAlbums(entryMode: RecentAlbumEntryMode, sources: string
   }
 }
 
+async function openSavedAlbums(entryMode: RecentAlbumEntryMode = 'normal', sources: string[] = []) {
+  if (controlsBusy.value || !selectedOption.value || entryMode === 'drag-drop' && !sources.length) return
+  closeRecentAlbums()
+  selectedSavedAlbum.value = null
+  savedAlbumEntryMode.value = entryMode
+  pendingSavedSources.value = [...sources]
+  isSavedAlbumScreen.value = true
+}
+
 function closeRecentAlbums() {
   if (selectionBusy.value) return
   isRecentAlbumScreen.value = false
   selectedRecentAlbum.value = null
   pendingRecentSources.value = []
+}
+
+function closeSavedAlbums() {
+  if (selectionBusy.value) return
+  isSavedAlbumScreen.value = false
+  selectedSavedAlbum.value = null
+  pendingSavedSources.value = []
 }
 
 async function selectRecentAlbum(album: RecentAlbum) {
@@ -275,6 +425,52 @@ async function chooseForRecentAlbum(kind: 'files' | 'folder') {
   uploadManager.setNextAlbumDisplayName(selectedRecentAlbum.value.albumName)
   await selection.chooseRecentAlbum(kind, selectedRecentAlbum.value.albumId)
   if (uploadState.isUploading) closeRecentAlbums()
+}
+
+async function saveAlbumShortcut(albumId: string, albumName: string) {
+  await ConfigManager.SetSelected(selectedOption.value)
+  await ConfigManager.SaveSavedAlbum(albumId, albumName)
+  savedAlbums.value = await ConfigManager.GetSavedAlbums()
+  toast.success('Album saved on this PC.')
+}
+
+async function saveAlbumIdentifier() {
+  if (isSavingAlbum.value || !albumIdentifier.value || !albumNameOrKey.value.trim() || !albumDisplayName.value.trim()) return
+  isSavingAlbum.value = true
+  try {
+    await saveAlbumShortcut(albumNameOrKey.value.trim(), albumDisplayName.value.trim())
+  } catch (error) {
+    toast.error('Could not save this album locally.', { description: error instanceof Error ? error.message : String(error) })
+  } finally {
+    isSavingAlbum.value = false
+  }
+}
+
+async function saveRecentAlbum(album: RecentAlbum) {
+  if (isSavingAlbum.value || savedAlbums.value.some(item => item.albumId === album.albumId)) return
+  isSavingAlbum.value = true
+  try {
+    await saveAlbumShortcut(album.albumId, album.albumName || 'Saved album')
+  } catch (error) {
+    toast.error('Could not save this album locally.', { description: error instanceof Error ? error.message : String(error) })
+  } finally {
+    isSavingAlbum.value = false
+  }
+}
+
+async function selectSavedAlbum(album: SavedAlbum) {
+  selectedSavedAlbum.value = album
+  if (savedAlbumEntryMode.value !== 'drag-drop' || !pendingSavedSources.value.length) return
+  uploadManager.setNextAlbumDisplayName(album.albumName)
+  await selection.startRecentAlbum(pendingSavedSources.value, album.albumId)
+  if (uploadState.isUploading) closeSavedAlbums()
+}
+
+async function chooseForSavedAlbum(kind: 'files' | 'folder', album: SavedAlbum) {
+  selectedSavedAlbum.value = album
+  uploadManager.setNextAlbumDisplayName(album.albumName)
+  await selection.chooseRecentAlbum(kind, album.albumId)
+  if (uploadState.isUploading) closeSavedAlbums()
 }
 
 onMounted(async () => {
@@ -419,8 +615,22 @@ onMounted(() => {
       }
       return
     }
+    if (isSavedAlbumScreen.value) {
+      if (selectedSavedAlbum.value) {
+        uploadManager.setNextAlbumDisplayName(selectedSavedAlbum.value.albumName)
+        void selection.startRecentAlbum(files, selectedSavedAlbum.value.albumId)
+      } else {
+        pendingSavedSources.value = files
+        savedAlbumEntryMode.value = 'drag-drop'
+      }
+      return
+    }
     if (dropZone === 'recent-album') {
       void openRecentAlbums('drag-drop', files)
+      return
+    }
+    if (dropZone === 'saved-album') {
+      void openSavedAlbums('drag-drop', files)
       return
     }
     void selection.drop(files, dropZone)
@@ -428,6 +638,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (albumNameLookupTimer) clearTimeout(albumNameLookupTimer)
+  albumNameLookupGeneration++
   unsubscribeFilesDropped?.()
   document.removeEventListener('dragenter', onDragEnter)
   document.removeEventListener('dragleave', onDragLeave)
@@ -444,11 +656,11 @@ onUnmounted(() => {
 <template>
   <main
     class="w-screen h-screen flex flex-col items-center"
-    style="--wails-draggable: drag"
+    :style="[{ '--wails-draggable': 'drag' }, appBackgroundStyle]"
   >
     <!-- Drop zones shown when dragging files -->
     <div
-      v-if="!uploadState.isUploading && !uploadState.completionVisible && isDraggingFiles && options.length > 0 && !showAlbumInput && !controlsBusy && !isAccountSetupOpen && !isAlbumHistoryOpen && !isUploadRecordsOpen && !isRecentAlbumScreen"
+      v-if="!uploadState.isUploading && !uploadState.completionVisible && isDraggingFiles && options.length > 0 && !showAlbumInput && !controlsBusy && !isAccountSetupOpen && !isAlbumHistoryOpen && !isUploadRecordsOpen && !isRecentAlbumScreen && !isSavedAlbumScreen"
       class="grid h-screen w-screen grid-cols-2 gap-3 p-6"
       style="--wails-draggable: none"
     >
@@ -473,6 +685,14 @@ onUnmounted(() => {
         class="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/60 p-3 drop-zone"
       >
         <h2 class="text-xl font-semibold select-none">Recent Album</h2>
+        <p class="mt-2 text-center text-sm text-muted-foreground select-none">Drop here, then choose a saved album.</p>
+      </div>
+      <div
+        data-file-drop-target
+        data-drop-zone="saved-album"
+        class="col-span-2 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/60 p-3 drop-zone"
+      >
+        <h2 class="text-xl font-semibold select-none">Saved Albums</h2>
         <p class="mt-2 text-center text-sm text-muted-foreground select-none">Drop here, then choose a saved album.</p>
       </div>
     </div>
@@ -553,16 +773,37 @@ onUnmounted(() => {
               <Label
                 for="album-input"
                 class="text-muted-foreground text-sm"
-              >Album name</Label>
+              >{{ albumIdentifier ? 'Album identifier' : 'Album name' }}</Label>
               <Input
                 id="album-input"
                 v-model="albumNameOrKey"
-                placeholder="e.g. Summer trip"
+                :placeholder="albumIdentifier ? 'AF1Qip…' : 'e.g. Summer trip'"
                 :disabled="selectionBusy"
                 autofocus
                 @keydown.enter.prevent="selection.confirmAlbum"
               />
-              <p class="text-xs text-muted-foreground">A name creates a new album, even if that name exists. Use Recent Album to reuse one. Existing album keys are also accepted.</p>
+              <template v-if="albumIdentifier">
+                <Label for="album-display-name" class="text-muted-foreground text-sm">Display name</Label>
+                <Input
+                  id="album-display-name"
+                  v-model="albumDisplayName"
+                  placeholder="e.g. Family photos"
+                  :disabled="selectionBusy"
+                  autocomplete="off"
+                  @update:model-value="albumDisplayNameEdited = true"
+                  @keydown.enter.prevent="selection.confirmAlbum"
+                />
+                <p class="text-xs text-muted-foreground">This name is saved on this computer for this account. It only labels the album in this app; Google Photos keeps its current title.</p>
+                <Button
+                  variant="outline"
+                  class="self-start"
+                  :disabled="selectionBusy || isSavingAlbum || !albumDisplayName.trim()"
+                  @click="saveAlbumIdentifier"
+                >
+                  {{ isSavingAlbum ? 'Saving…' : 'Save to Saved Albums' }}
+                </Button>
+              </template>
+              <p v-else class="text-xs text-muted-foreground">A name creates a new album, even if that name exists. Use Recent Album to reuse one.</p>
             </div>
 
             <div class="flex gap-4">
@@ -576,7 +817,7 @@ onUnmounted(() => {
               </Button>
               <Button
                 class="cursor-pointer select-none"
-                :disabled="(uploadMode === 'album' && !albumNameOrKey.trim()) || selectionBusy"
+                :disabled="(uploadMode === 'album' && (!albumNameOrKey.trim() || (albumIdentifier && !albumDisplayName.trim()))) || selectionBusy"
                 @click="selection.confirmAlbum"
               >
                 {{ selectionBusy ? 'Starting…' : 'Upload' }}
@@ -587,6 +828,18 @@ onUnmounted(() => {
 
         <template v-else-if="isAlbumHistoryOpen">
           <AlbumHistory :account="selectedOption" @back="isAlbumHistoryOpen = false" />
+        </template>
+
+        <template v-else-if="isSavedAlbumScreen">
+          <SavedAlbums
+            :account="selectedOption"
+            :selected-album-id="selectedSavedAlbum?.albumId || ''"
+            :drag-drop="savedAlbumEntryMode === 'drag-drop'"
+            :busy="controlsBusy"
+            @back="closeSavedAlbums"
+            @select="selectSavedAlbum"
+            @choose="chooseForSavedAlbum"
+          />
         </template>
 
         <template v-else-if="isRecentAlbumScreen">
@@ -604,18 +857,26 @@ onUnmounted(() => {
               <p class="mt-1 text-sm text-muted-foreground">Albums you successfully upload to will appear here for quick access.</p>
             </div>
             <div v-else class="w-full max-w-md space-y-2">
-              <button
-                v-for="album in recentAlbums"
-                :key="album.albumId"
-                type="button"
-                class="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors"
-                :class="selectedRecentAlbum?.albumId === album.albumId ? 'border-primary bg-primary/10' : 'hover:bg-muted/50'"
-                :disabled="selectionBusy"
-                @click="selectRecentAlbum(album)"
-              >
-                <span class="min-w-0 break-all text-sm font-medium">{{ album.albumName || 'Saved album' }}</span>
-                <span class="shrink-0 text-xs text-muted-foreground">Use album</span>
-              </button>
+              <div v-for="album in recentAlbums" :key="album.albumId" class="flex items-center gap-2 rounded-lg border p-2">
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-center justify-between gap-3 rounded px-1 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  :class="selectedRecentAlbum?.albumId === album.albumId ? 'text-primary' : ''"
+                  :disabled="selectionBusy"
+                  @click="selectRecentAlbum(album)"
+                >
+                  <span class="min-w-0 break-all text-sm font-medium">{{ savedAlbums.find(item => item.albumId === album.albumId)?.albumName || album.albumName || 'Saved album' }}</span>
+                  <span class="shrink-0 text-xs text-muted-foreground">Use</span>
+                </button>
+                <Button
+                  v-if="!savedAlbums.some(item => item.albumId === album.albumId)"
+                  variant="outline"
+                  size="sm"
+                  :disabled="selectionBusy || isSavingAlbum"
+                  @click="saveRecentAlbum(album)"
+                >Save</Button>
+                <span v-else class="px-2 text-xs text-muted-foreground">Saved</span>
+              </div>
             </div>
 
             <div v-if="selectedRecentAlbum && recentAlbumEntryMode === 'normal'" class="grid w-full max-w-md grid-cols-2 gap-2">
@@ -634,9 +895,12 @@ onUnmounted(() => {
           <GoogleAccountSelect
             v-model="selectedOption"
             :options="options"
+            :avatars="accountAvatars"
             :removing-account="removingAccount"
             :disabled="controlsBusy"
             @item-removed="removeCredentials"
+            @set-avatar="setAccountAvatar"
+            @remove-avatar="clearAccountAvatar"
             @add="openAccountSetup"
           />
           <div
@@ -657,7 +921,7 @@ onUnmounted(() => {
           </div>
 
           <fieldset
-            class="w-full max-w-3xl"
+            class="mt-3 w-full max-w-3xl"
             :disabled="controlsBusy"
             style="--wails-draggable: none"
           >
@@ -743,7 +1007,7 @@ onUnmounted(() => {
             </SheetTrigger>
             <SheetContent side="bottom" class="max-h-screen overflow-y-auto pb-16">
               <TooltipProvider disable-hoverable-content>
-                <SettingsPanel />
+                <SettingsPanel @background-changed="refreshAppBackground" />
               </TooltipProvider>
               <DebugLogButton :busy="isExportingLog" @export="exportDebugLog" />
             </SheetContent>
@@ -756,6 +1020,7 @@ onUnmounted(() => {
           >
             Album History
           </Button>
+          <Button variant="outline" class="cursor-pointer select-none" :disabled="controlsBusy || !selectedOption" @click="openSavedAlbums()">Saved Albums</Button>
           <Button variant="outline" class="cursor-pointer select-none" :disabled="controlsBusy || !selectedOption" @click="isUploadRecordsOpen = true">Upload Records</Button>
 
         </template>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mediaLabel, resultHeading, folderCounts, recordAlbumProgress } from '../src/utils/uploadPresentation.ts'
+import { mediaLabel, resultHeading, folderCounts, recordAlbumProgress, uploadedFileName } from '../src/utils/uploadPresentation.ts'
 
 test('results distinguish cancellation, failure, partial success, skips and album errors', () => {
   assert.equal(resultHeading(true, 2, 0, 0, 0), 'Upload cancelled')
@@ -23,6 +23,11 @@ test('media headings handle photo, video, mixed and unknown selections', () => {
   assert.equal(mediaLabel(['a.mp4']), 'videos')
   assert.equal(mediaLabel(['a.jpg', 'b.mp4']), 'files')
   assert.equal(mediaLabel([]), 'files')
+})
+
+test('completion file names show basenames for Windows and Linux paths', () => {
+  assert.equal(uploadedFileName('C:\\Photos\\trip.jpg'), 'trip.jpg')
+  assert.equal(uploadedFileName('/home/user/Photos/trip.jpg'), 'trip.jpg')
 })
 
 test('album results retain partial additions and separate split album counts', () => {

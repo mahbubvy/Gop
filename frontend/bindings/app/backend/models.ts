@@ -8,6 +8,7 @@ import { Create as $Create } from "@wailsio/runtime";
 export class AccountSummary {
     "email": string;
     "needsTokenBinding": boolean;
+    "avatarDataURL"?: string;
 
     /** Creates a new AccountSummary instance. */
     constructor($$source: Partial<AccountSummary> = {}) {
@@ -188,6 +189,9 @@ export class Config {
     "albumAutoMode": boolean;
     "recentAlbumsByAccount"?: { [_ in string]?: RecentAlbum[] };
     "albumHistoryByAccount"?: { [_ in string]?: AlbumHistoryEntry[] };
+    "backgroundMode": string;
+    "backgroundColor": string;
+    "backgroundImageKey"?: string;
     "setDateFromFilename": boolean;
     "excludePattern": string;
 
@@ -240,6 +244,12 @@ export class Config {
         }
         if (!("albumAutoMode" in $$source)) {
             this["albumAutoMode"] = false;
+        }
+        if (!("backgroundMode" in $$source)) {
+            this["backgroundMode"] = "";
+        }
+        if (!("backgroundColor" in $$source)) {
+            this["backgroundColor"] = "";
         }
         if (!("setDateFromFilename" in $$source)) {
             this["setDateFromFilename"] = false;
@@ -428,6 +438,31 @@ export class RecentAlbum {
     static createFrom($$source: any = {}): RecentAlbum {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new RecentAlbum($$parsedSource as Partial<RecentAlbum>);
+    }
+}
+
+export class SavedAlbum {
+    "albumId": string;
+    "albumName": string;
+
+    /** Creates a new SavedAlbum instance. */
+    constructor($$source: Partial<SavedAlbum> = {}) {
+        if (!("albumId" in $$source)) {
+            this["albumId"] = "";
+        }
+        if (!("albumName" in $$source)) {
+            this["albumName"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SavedAlbum instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SavedAlbum {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SavedAlbum($$parsedSource as Partial<SavedAlbum>);
     }
 }
 

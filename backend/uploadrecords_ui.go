@@ -30,7 +30,7 @@ func (s *UploadRecordStore) page(ctx context.Context, account, search string, of
 	if account == "" || offset < 0 {
 		return result, errors.New("invalid record query")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT path,size,recorded_at_ns,origin FROM upload_records WHERE account=? AND instr(lower(path),lower(?))>0 ORDER BY path LIMIT 51 OFFSET ?`, account, search, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT path,size,recorded_at_ns,origin FROM upload_records WHERE account=? AND instr(lower(path),lower(?))>0 ORDER BY recorded_at_ns DESC,path LIMIT 51 OFFSET ?`, account, search, offset)
 	if err != nil {
 		return result, err
 	}

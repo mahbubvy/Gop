@@ -1,6 +1,6 @@
 # gotohp: home upload controls and Linux build handoff
 
-> Superseded on 2026-09-11 by [LINUX_MINT_TECHNICAL_HANDOFF.md](LINUX_MINT_TECHNICAL_HANDOFF.md). The older behavior, versions, artifacts and test claims below are historical; use the new document for current work.
+> Superseded by [LINUX_MINT_TECHNICAL_HANDOFF.md](LINUX_MINT_TECHNICAL_HANDOFF.md), updated 2026-09-15 for v1.3.1 and the private mahbubvy/Gop repository. The older behavior, versions, artifacts and test claims below are historical; use the new document for current work.
 
 Prepared 2026-09-04. This is a handoff, not a claim that a Linux package has been built.
 

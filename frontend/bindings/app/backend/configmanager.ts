@@ -29,6 +29,10 @@ export function CancelUploadRecordPreview(id: string): $CancellablePromise<void>
     return $Call.ByID(2176132112, id);
 }
 
+export function ClearAccountAvatar(email: string): $CancellablePromise<void> {
+    return $Call.ByID(4017946435, email);
+}
+
 /**
  * CountUploadCandidates uses the existing scanner without network requests.
  */
@@ -79,6 +83,10 @@ export function GetAlbumName(): $CancellablePromise<string> {
     return $Call.ByID(3590690922);
 }
 
+export function GetAppBackgroundImageDataURL(): $CancellablePromise<string> {
+    return $Call.ByID(3723010439);
+}
+
 export function GetExcludePattern(): $CancellablePromise<string> {
     return $Call.ByID(2942848526);
 }
@@ -93,15 +101,21 @@ export function GetRecentAlbums(): $CancellablePromise<$models.RecentAlbum[]> {
     });
 }
 
+export function GetSavedAlbums(): $CancellablePromise<$models.SavedAlbum[]> {
+    return $Call.ByID(3521304993).then(($result: any) => {
+        return $$createType6($result);
+    });
+}
+
 export function GetSettings(): $CancellablePromise<$models.Config> {
     return $Call.ByID(4262641511).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
 export function GetUploadRecords(account: string, search: string, offset: number): $CancellablePromise<$models.UploadRecordPage> {
     return $Call.ByID(687878935, account, search, offset).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
     });
 }
 
@@ -110,13 +124,13 @@ export function GetUploadRecords(account: string, search: string, offset: number
  */
 export function PreviewAutoAlbums(paths: string[]): $CancellablePromise<string[]> {
     return $Call.ByID(1461498941, paths).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
 export function PreviewUploadRecords(paths: string[], id: string): $CancellablePromise<$models.UploadRecordPreview> {
     return $Call.ByID(402473999, paths, id).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType10($result);
     });
 }
 
@@ -131,12 +145,39 @@ export function RemoveRecentAlbum(albumID: string): $CancellablePromise<void> {
     return $Call.ByID(180472976, albumID);
 }
 
+export function RemoveSavedAlbum(albumID: string): $CancellablePromise<void> {
+    return $Call.ByID(3322741864, albumID);
+}
+
+export function ResetAppBackground(): $CancellablePromise<void> {
+    return $Call.ByID(996571244);
+}
+
+/**
+ * SaveSavedAlbum stores or renames a local shortcut; Google Photos receives only the ID during upload.
+ */
+export function SaveSavedAlbum(albumID: string, albumName: string): $CancellablePromise<void> {
+    return $Call.ByID(2939468365, albumID, albumName);
+}
+
+export function SetAccountAvatar(email: string, sourcePath: string): $CancellablePromise<void> {
+    return $Call.ByID(2216356496, email, sourcePath);
+}
+
 export function SetAlbumAutoMode(autoMode: boolean): $CancellablePromise<void> {
     return $Call.ByID(1935381765, autoMode);
 }
 
 export function SetAlbumName(albumName: string): $CancellablePromise<void> {
     return $Call.ByID(841849854, albumName);
+}
+
+export function SetAppBackgroundColor(value: string): $CancellablePromise<void> {
+    return $Call.ByID(1931598752, value);
+}
+
+export function SetAppBackgroundImage(sourcePath: string): $CancellablePromise<void> {
+    return $Call.ByID(880300882, sourcePath);
 }
 
 export function SetDeleteFromHost(deleteFromHost: boolean): $CancellablePromise<void> {
@@ -218,7 +259,9 @@ const $$createType1 = $models.AlbumHistoryEntry.createFrom;
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = $models.RecentAlbum.createFrom;
 const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $models.Config.createFrom;
-const $$createType6 = $models.UploadRecordPage.createFrom;
-const $$createType7 = $Create.Array($Create.Any);
-const $$createType8 = $models.UploadRecordPreview.createFrom;
+const $$createType5 = $models.SavedAlbum.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $models.Config.createFrom;
+const $$createType8 = $models.UploadRecordPage.createFrom;
+const $$createType9 = $Create.Array($Create.Any);
+const $$createType10 = $models.UploadRecordPreview.createFrom;

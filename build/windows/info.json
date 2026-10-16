@@ -1,16 +1,16 @@
 {
 	"fixed": {
-		"file_version": "1.3.1"
+		"file_version": "1.3.3"
 	},
 	"info": {
 		"0409": {
-			"FileVersion": "1.3.1",
-			"ProductVersion": "1.3.1",
+			"FileVersion": "1.3.3",
+			"ProductVersion": "1.3.3",
 			"CompanyName": "xob0t",
-			"FileDescription": "gotohp 1.3.1 - Desktop UI refinements",
+			"FileDescription": "gotohp 1.3.3 - Account backgrounds",
 			"LegalCopyright": "© now, My Company",
 			"ProductName": "gotohp",
-			"Comments": "Collapsed upload-record folders, 14 recent albums per account, and an 800 x 900 default window."
+			"Comments": "Adds per-account backgrounds and a compact 72px avatar."
 		}
 	}
 }

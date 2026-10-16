@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { Check, Plus, X } from '@lucide/vue'
+import { Check, ImagePlus, Plus, Trash2, X } from '@lucide/vue'
 import {
   SelectItem as SelectItemPrimitive,
   SelectItemIndicator,
@@ -19,12 +19,15 @@ interface Props {
   modelValue?: string
   options?: string[]
   removingAccount?: string
+  avatars?: Record<string, string>
   disabled?: boolean
 }
 
 interface Emits {
   (event: 'update:modelValue', value: string): void
   (event: 'item-removed', value: string): void
+  (event: 'set-avatar'): void
+  (event: 'remove-avatar'): void
   (event: 'add'): void
 }
 
@@ -32,6 +35,7 @@ const props = withDefaults(defineProps<Props>(), {
   modelValue: '',
   options: () => [],
   removingAccount: '',
+  avatars: () => ({}),
   disabled: false,
 })
 
@@ -52,60 +56,98 @@ watch(selectedValue, (newValue) => {
 </script>
 
 <template>
-  <Select
-    v-model="selectedValue"
-    v-model:open="isOpen"
-    :disabled="disabled"
-  >
-    <SelectTrigger class="max-w-60 select-none">
-      <SelectValue placeholder="Select account" />
-    </SelectTrigger>
-    <SelectContent
-      align="center"
-      class="w-max min-w-[var(--reka-select-trigger-width)] max-w-[min(15rem,calc(100vw-3rem))]"
+  <div class="relative flex min-h-[72px] w-full flex-wrap items-center justify-center gap-1.5">
+    <span
+      v-if="selectedValue"
+      aria-hidden="true"
+      class="flex size-[72px] shrink-0 items-center justify-center rounded-full bg-muted text-2xl font-semibold min-[560px]:absolute min-[560px]:left-10 min-[560px]:top-1/2 min-[560px]:-translate-y-1/2"
     >
-      <SelectGroup>
-        <div
-          v-for="option in options"
-          :key="option"
-          class="relative flex items-center"
-        >
-          <SelectItemPrimitive
-            :value="option"
-            class="focus:bg-accent focus:text-accent-foreground relative flex min-w-0 w-full cursor-default items-center rounded-sm py-1.5 pr-9 pl-8 text-sm outline-hidden select-none"
-          >
-            <span class="absolute left-2 flex size-3.5 items-center justify-center">
-              <SelectItemIndicator>
-                <Check class="size-4" />
-              </SelectItemIndicator>
-            </span>
-            <SelectItemText class="min-w-0 flex-1">
-              <span class="block max-w-44 truncate">{{ option }}</span>
-            </SelectItemText>
-          </SelectItemPrimitive>
-          <button
-            type="button"
-            class="absolute right-1.5 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-destructive hover:text-white disabled:pointer-events-none disabled:opacity-50"
-            :aria-label="`Remove ${option}`"
-            :title="`Remove ${option}`"
-            :disabled="removingAccount === option"
-            @pointerdown.stop.prevent
-            @click.stop.prevent="emit('item-removed', option)"
-          >
-            <X class="size-3.5" />
-          </button>
-        </div>
-      </SelectGroup>
-      <SelectSeparator v-if="options.length" />
-      <button
-        type="button"
-        class="focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm text-muted-foreground outline-hidden select-none hover:bg-accent"
-        @pointerdown.stop.prevent
-        @click.stop.prevent="isOpen = false; emit('add')"
+      <img v-if="avatars[selectedValue]" :src="avatars[selectedValue]" alt="" class="size-full rounded-full object-cover" />
+      <template v-else>{{ selectedValue[0]?.toUpperCase() }}</template>
+    </span>
+    <Select
+      v-model="selectedValue"
+      v-model:open="isOpen"
+      :disabled="disabled"
+    >
+      <SelectTrigger class="h-9 max-w-[min(24rem,calc(100vw-7rem))] select-none">
+        <SelectValue placeholder="Select account">
+          <span v-if="selectedValue" class="truncate">{{ selectedValue }}</span>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent
+        align="center"
+        class="w-max min-w-[var(--reka-select-trigger-width)] max-w-[min(24rem,calc(100vw-3rem))]"
       >
-        <Plus class="size-4" />
-        Add account
-      </button>
-    </SelectContent>
-  </Select>
+        <SelectGroup>
+          <div
+            v-for="option in options"
+            :key="option"
+            class="relative flex items-center"
+          >
+            <SelectItemPrimitive
+              :value="option"
+              class="focus:bg-accent focus:text-accent-foreground relative flex min-w-0 w-full cursor-default items-center rounded-sm py-1.5 pr-9 pl-8 text-sm outline-hidden select-none"
+            >
+              <span class="absolute left-2 flex size-3.5 items-center justify-center">
+                <SelectItemIndicator>
+                  <Check class="size-4" />
+                </SelectItemIndicator>
+              </span>
+              <SelectItemText class="min-w-0 flex-1">
+                <span class="flex max-w-44 items-center gap-2 truncate">
+                  <img v-if="avatars[option]" :src="avatars[option]" alt="" class="size-6 shrink-0 rounded-full object-cover" />
+                  <span v-else class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">{{ option[0]?.toUpperCase() }}</span>
+                  <span class="truncate">{{ option }}</span>
+                </span>
+              </SelectItemText>
+            </SelectItemPrimitive>
+            <button
+              type="button"
+              class="absolute right-1.5 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-destructive hover:text-white disabled:pointer-events-none disabled:opacity-50"
+              :aria-label="`Remove ${option}`"
+              :title="`Remove ${option}`"
+              :disabled="removingAccount === option"
+              @pointerdown.stop.prevent
+              @click.stop.prevent="emit('item-removed', option)"
+            >
+              <X class="size-3.5" />
+            </button>
+          </div>
+        </SelectGroup>
+        <SelectSeparator v-if="options.length" />
+        <button
+          type="button"
+          class="focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm text-muted-foreground outline-hidden select-none hover:bg-accent"
+          @pointerdown.stop.prevent
+          @click.stop.prevent="isOpen = false; emit('add')"
+        >
+          <Plus class="size-4" />
+          Add account
+        </button>
+      </SelectContent>
+    </Select>
+    <button
+      v-if="selectedValue"
+      type="button"
+      class="flex size-9 shrink-0 items-center justify-center rounded-md border text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+      :aria-label="`Choose avatar for ${selectedValue}`"
+      title="Choose a PNG, JPEG, or GIF avatar up to 5 MiB"
+      :disabled="disabled"
+      @click="emit('set-avatar')"
+    >
+      <ImagePlus class="size-4" />
+    </button>
+    <button
+      v-if="avatars[selectedValue]"
+      type="button"
+      class="flex size-9 shrink-0 items-center justify-center rounded-md border text-muted-foreground hover:bg-destructive hover:text-white disabled:opacity-50"
+      :aria-label="`Remove avatar for ${selectedValue}`"
+      title="Remove avatar"
+      :disabled="disabled"
+      @click="emit('remove-avatar')"
+    >
+      <Trash2 class="size-4" />
+    </button>
+  </div>
 </template>

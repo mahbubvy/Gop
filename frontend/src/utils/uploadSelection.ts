@@ -1,6 +1,10 @@
 import { ref, watch } from 'vue'
 import type { Dialogs } from '@wailsio/runtime'
 
+function isAlbumIdentifier(value: string): boolean {
+  return value.length > 6 && value.startsWith('AF1Qip')
+}
+
 export type UploadMode = 'regular' | 'album' | 'auto-album'
 
 export const uploadModes: { value: UploadMode; title: string; description: string }[] = [
@@ -16,7 +20,7 @@ interface UploadSelectionDependencies {
   setSelected: (account: string) => Promise<unknown>
   setAlbumName: (name: string) => Promise<unknown>
   setAlbumAutoMode: (auto: boolean) => Promise<unknown>
-  startUpload: (files: string[], bypassLocalRecords?: boolean) => Promise<unknown>
+  startUpload: (files: string[], bypassLocalRecords?: boolean, albumDisplayName?: string) => Promise<unknown>
   reviewRecords?: (files: string[]) => Promise<boolean | null>
   onError: (error: unknown) => void
   reviewAuto?: boolean
@@ -33,6 +37,7 @@ export function useUploadSelection(deps: UploadSelectionDependencies) {
   watch(deps.isUploading, uploading => { if (uploading) starting.value = false })
   const pendingFiles = ref<string[]>([])
   const albumName = ref('')
+  const albumDisplayName = ref('')
   const previewFolders = ref<string[]>([])
   let pendingAccount = ''
 
@@ -41,14 +46,17 @@ export function useUploadSelection(deps: UploadSelectionDependencies) {
     pendingFiles.value = []
     pendingAccount = ''
     albumName.value = ''
+    albumDisplayName.value = ''
     previewFolders.value = []
   }
 
   async function start(files: string[], selectedMode: UploadMode, account: string) {
-    await startWithAlbum(files, selectedMode, account, selectedMode === 'album' ? albumName.value.trim() : '')
+    const selectedAlbumName = selectedMode === 'album' ? albumName.value.trim() : ''
+    const displayName = isAlbumIdentifier(selectedAlbumName) ? albumDisplayName.value.trim() : ''
+    await startWithAlbum(files, selectedMode, account, selectedAlbumName, displayName)
   }
 
-  async function startWithAlbum(files: string[], selectedMode: UploadMode, account: string, selectedAlbumName: string) {
+  async function startWithAlbum(files: string[], selectedMode: UploadMode, account: string, selectedAlbumName: string, selectedDisplayName = '') {
     await deps.setSelected(account)
     await deps.setAlbumName(selectedMode === 'album' ? selectedAlbumName : '')
     await deps.setAlbumAutoMode(selectedMode === 'auto-album')
@@ -56,7 +64,7 @@ export function useUploadSelection(deps: UploadSelectionDependencies) {
     if (bypass === null) return
     starting.value = true
     try {
-      await deps.startUpload(files, bypass)
+      await deps.startUpload(files, bypass, selectedDisplayName)
       if (deps.isUploading()) starting.value = false
     } catch (error) {
       starting.value = false
@@ -82,6 +90,7 @@ export function useUploadSelection(deps: UploadSelectionDependencies) {
       pendingFiles.value = files
       pendingAccount = account
       albumName.value = ''
+      albumDisplayName.value = ''
     } else {
       await start(files, selectedMode, account)
     }
@@ -127,13 +136,14 @@ export function useUploadSelection(deps: UploadSelectionDependencies) {
   }
 
   async function confirmAlbum() {
-    if (busy.value || starting.value || deps.isUploading() || !pendingFiles.value.length || (mode.value === 'album' && !albumName.value.trim())) return
+    if (busy.value || starting.value || deps.isUploading() || !pendingFiles.value.length || (mode.value === 'album' && (!albumName.value.trim() || (isAlbumIdentifier(albumName.value.trim()) && !albumDisplayName.value.trim())))) return
     busy.value = true
     try {
       await start([...pendingFiles.value], mode.value, pendingAccount)
       pendingFiles.value = []
       pendingAccount = ''
       albumName.value = ''
+      albumDisplayName.value = ''
     } catch (error) {
       deps.onError(error)
     } finally {
@@ -179,5 +189,5 @@ export function useUploadSelection(deps: UploadSelectionDependencies) {
     }
   }
 
-  return { mode, busy, starting, pendingFiles, albumName, previewFolders, choose, drop, confirmAlbum, cancelAlbum, chooseRecentAlbum, startRecentAlbum }
+  return { mode, busy, starting, pendingFiles, albumName, albumDisplayName, previewFolders, choose, drop, confirmAlbum, cancelAlbum, chooseRecentAlbum, startRecentAlbum }
 }

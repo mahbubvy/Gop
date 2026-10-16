@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { nextTick, ref, onMounted, watch } from 'vue'
+import { Dialogs } from '@wailsio/runtime'
 import { ConfigManager } from '../bindings/app/backend'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import Button from './components/ui/button/Button.vue'
 import {
     Tooltip,
     TooltipContent,
@@ -51,6 +53,12 @@ const settings = ref<Settings>({
     uploadThreads: 0
 })
 const isHydrating = ref(true)
+const backgroundMode = ref('default')
+const backgroundColor = ref('#101214')
+const backgroundBusy = ref(false)
+const backgroundError = ref('')
+const backgroundAccount = ref('')
+const emit = defineEmits<{ backgroundChanged: [] }>()
 
 const toggleSetting = (setting: BooleanSetting, enabled = true) => {
     if (!enabled) return
@@ -74,11 +82,65 @@ onMounted(async () => {
             setDateFromFilename: config.setDateFromFilename || false,
             uploadThreads: config.uploadThreads || 1
         }
+        backgroundMode.value = config.backgroundMode || 'default'
+        backgroundColor.value = config.backgroundColor || '#101214'
+        backgroundAccount.value = config.selected || ''
     } finally {
         await nextTick()
         isHydrating.value = false
     }
 })
+
+async function setBackgroundColor() {
+    backgroundBusy.value = true
+    backgroundError.value = ''
+    try {
+        await ConfigManager.SetAppBackgroundColor(backgroundColor.value)
+        backgroundMode.value = 'color'
+        emit('backgroundChanged')
+    } catch {
+        backgroundError.value = 'Could not save the background color.'
+    } finally {
+        backgroundBusy.value = false
+    }
+}
+
+async function chooseBackgroundImage() {
+    backgroundError.value = ''
+    try {
+        const path = await Dialogs.OpenFile({
+            Title: 'Choose app background image',
+            CanChooseFiles: true,
+            CanChooseDirectories: false,
+            AllowsMultipleSelection: false,
+            Filters: [{ DisplayName: 'Image files (PNG, JPEG, GIF)', Pattern: '*.png;*.jpg;*.jpeg;*.gif' }],
+        })
+        if (!path || Array.isArray(path)) return
+        backgroundBusy.value = true
+        await ConfigManager.SetAppBackgroundImage(path)
+        backgroundMode.value = 'image'
+        emit('backgroundChanged')
+    } catch {
+        backgroundError.value = 'Could not save that image. Choose a valid PNG, JPEG, or GIF under 5 MiB.'
+    } finally {
+        backgroundBusy.value = false
+    }
+}
+
+async function resetBackground() {
+    backgroundBusy.value = true
+    backgroundError.value = ''
+    try {
+        await ConfigManager.ResetAppBackground()
+        backgroundMode.value = 'default'
+        backgroundColor.value = '#101214'
+        emit('backgroundChanged')
+    } catch {
+        backgroundError.value = 'Could not reset the background.'
+    } finally {
+        backgroundBusy.value = false
+    }
+}
 
 // Watch for changes to proxy value and update backend
 watch(() => settings.value.proxy, async (newValue) => {
@@ -153,6 +215,28 @@ watch(() => settings.value.uploadThreads, async (newValue) => {
 
 <template>
   <div class="flex flex-col gap-2.5 m-4">
+    <section class="space-y-3 rounded-xl border border-border p-4">
+      <div>
+        <h2 class="text-sm font-semibold">App background</h2>
+        <p class="text-xs text-muted-foreground">{{ backgroundAccount ? `For ${backgroundAccount}` : 'No account selected · background fallback' }} · Saved on this PC. Images: PNG, JPEG, or GIF under 5 MiB.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <input
+          v-model="backgroundColor"
+          type="color"
+          aria-label="Choose app background color"
+          class="size-10 cursor-pointer rounded border-0 bg-transparent p-0"
+        >
+        <Button variant="outline" :disabled="backgroundBusy" @click="setBackgroundColor">Use color</Button>
+        <span v-if="backgroundMode === 'color'" class="text-xs text-muted-foreground">Active</span>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="outline" :disabled="backgroundBusy" @click="chooseBackgroundImage">Choose image</Button>
+        <Button variant="ghost" :disabled="backgroundBusy || backgroundMode === 'default'" @click="resetBackground">Reset to default</Button>
+        <span v-if="backgroundMode === 'image'" class="self-center text-xs text-muted-foreground">Image active</span>
+      </div>
+      <p v-if="backgroundError" role="alert" class="text-xs text-destructive">{{ backgroundError }}</p>
+    </section>
     <NumberField
       v-model="settings.uploadThreads"
       class="flex items-center justify-between"

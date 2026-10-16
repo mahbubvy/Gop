@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { CheckCircle2, ClipboardCheck, FolderPlus, Home, AlertTriangle } from '@lucide/vue'
 import Button from './components/ui/button/Button.vue'
 import { uploadManager } from './utils/UploadManager'
-import { resultHeading, mediaLabel } from './utils/uploadPresentation'
+import { resultHeading, mediaLabel, uploadedFileName } from './utils/uploadPresentation'
 
 defineProps<{ account: string }>()
 
@@ -15,6 +15,7 @@ const heading = computed(() => resultHeading(state.cancelRequested, state.result
 const usesAlbums = computed(() => state.albumAutoMode || !!state.albumName)
 const unfinishedCount = computed(() => Math.max(0, state.totalFiles - state.uploadedFiles))
 const locallySkipped = computed(() => state.results.skipped.filter(item => item.code === 'local-record').length)
+const successfulFiles = computed(() => state.results.success.map(file => ({ ...file, name: uploadedFileName(file.path) })))
 
 async function copyResults() {
   const copied = await uploadManager.copyResultsAsJson()
@@ -45,6 +46,15 @@ async function copyResults() {
           <div class="rounded-md bg-muted/50 px-2 py-2"><strong class="block text-base">{{ state.results.skipped.length - locallySkipped }}</strong><span class="text-muted-foreground">Other skipped</span></div>
           <div class="rounded-md bg-muted/50 px-2 py-2"><strong class="block text-base">{{ state.results.warnings.length }}</strong><span class="text-muted-foreground">Warnings</span></div>
         </div>
+      </section>
+
+      <section v-if="successfulFiles.length" class="rounded-xl border p-4">
+        <h2 class="font-semibold">Uploaded files ({{ successfulFiles.length }})</h2>
+        <ul class="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1" aria-label="Uploaded file names">
+          <li v-for="(file, index) in successfulFiles" :key="`${file.path}-${index}`" class="break-all text-sm text-muted-foreground">
+            {{ file.name }}
+          </li>
+        </ul>
       </section>
 
       <section v-if="usesAlbums" class="rounded-xl border p-4">
