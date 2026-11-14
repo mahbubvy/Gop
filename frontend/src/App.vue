@@ -127,6 +127,7 @@ const selection = useUploadSelection({
   getAccount: () => selectedOption.value,
   isUploading: () => uploadState.isUploading,
   openFile: options => Dialogs.OpenFile(options),
+  chooseAutoFolders: () => ConfigManager.ChooseAutoFolders(),
   setSelected: account => ConfigManager.SetSelected(account),
   setAlbumName: name => ConfigManager.SetAlbumName(name),
   setAlbumAutoMode: auto => ConfigManager.SetAlbumAutoMode(auto),
@@ -980,7 +981,7 @@ onUnmounted(() => {
                 @click="selection.choose('folder')"
               >
                 <FolderOpen class="size-4" />
-                Choose folder
+                {{ uploadMode === 'auto-album' ? 'Choose folders' : 'Choose folder' }}
               </Button>
             </div>
             <p

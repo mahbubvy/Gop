@@ -17,6 +17,7 @@ interface UploadSelectionDependencies {
   getAccount: () => string
   isUploading: () => boolean
   openFile: (options: Dialogs.OpenFileDialogOptions) => Promise<string | string[] | null>
+  chooseAutoFolders?: () => Promise<string[] | null>
   setSelected: (account: string) => Promise<unknown>
   setAlbumName: (name: string) => Promise<unknown>
   setAlbumAutoMode: (auto: boolean) => Promise<unknown>
@@ -106,13 +107,15 @@ export function useUploadSelection(deps: UploadSelectionDependencies) {
     const account = deps.getAccount()
     busy.value = true
     try {
-      const selection = await deps.openFile({
-        Title: kind === 'folder' ? 'Choose folder to upload' : 'Choose files to upload',
-        CanChooseFiles: kind === 'files',
-        CanChooseDirectories: kind === 'folder',
-        AllowsMultipleSelection: kind === 'files',
-        ButtonText: selectedMode === 'album' ? 'Choose' : 'Upload',
-      })
+      const selection = kind === 'folder' && selectedMode === 'auto-album' && deps.chooseAutoFolders
+        ? await deps.chooseAutoFolders()
+        : await deps.openFile({
+          Title: kind === 'folder' ? 'Choose folder to upload' : 'Choose files to upload',
+          CanChooseFiles: kind === 'files',
+          CanChooseDirectories: kind === 'folder',
+          AllowsMultipleSelection: kind === 'files',
+          ButtonText: selectedMode === 'album' ? 'Choose' : 'Upload',
+        })
       const files = (Array.isArray(selection) ? selection : [selection]).filter((path): path is string => !!path)
       await accept(files, selectedMode, account)
     } catch (error) {

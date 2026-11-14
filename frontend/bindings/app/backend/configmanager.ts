@@ -29,6 +29,15 @@ export function CancelUploadRecordPreview(id: string): $CancellablePromise<void>
     return $Call.ByID(2176132112, id);
 }
 
+/**
+ * ChooseAutoFolders opens the native picker and returns the selected directories.
+ */
+export function ChooseAutoFolders(): $CancellablePromise<string[]> {
+    return $Call.ByID(3573012401).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function ClearAccountAvatar(email: string): $CancellablePromise<void> {
     return $Call.ByID(4017946435, email);
 }
@@ -65,7 +74,7 @@ export function ForgetUploadRecords(account: string, paths: string[]): $Cancella
 
 export function GetAccounts(): $CancellablePromise<$models.AccountsState> {
     return $Call.ByID(562122970).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
@@ -75,7 +84,7 @@ export function GetAlbumAutoMode(): $CancellablePromise<boolean> {
 
 export function GetAlbumHistory(): $CancellablePromise<$models.AlbumHistoryEntry[]> {
     return $Call.ByID(1113957427).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
@@ -97,25 +106,25 @@ export function GetExcludePattern(): $CancellablePromise<string> {
  */
 export function GetRecentAlbums(): $CancellablePromise<$models.RecentAlbum[]> {
     return $Call.ByID(461078137).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
 }
 
 export function GetSavedAlbums(): $CancellablePromise<$models.SavedAlbum[]> {
     return $Call.ByID(3521304993).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType7($result);
     });
 }
 
 export function GetSettings(): $CancellablePromise<$models.Config> {
     return $Call.ByID(4262641511).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
 export function GetUploadRecords(account: string, search: string, offset: number): $CancellablePromise<$models.UploadRecordPage> {
     return $Call.ByID(687878935, account, search, offset).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType9($result);
     });
 }
 
@@ -124,7 +133,7 @@ export function GetUploadRecords(account: string, search: string, offset: number
  */
 export function PreviewAutoAlbums(paths: string[]): $CancellablePromise<string[]> {
     return $Call.ByID(1461498941, paths).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType0($result);
     });
 }
 
@@ -254,14 +263,14 @@ export function TouchRecentAlbum(albumID: string, albumName: string): $Cancellab
 }
 
 // Private type creation functions
-const $$createType0 = $models.AccountsState.createFrom;
-const $$createType1 = $models.AlbumHistoryEntry.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $models.RecentAlbum.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $models.SavedAlbum.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $models.Config.createFrom;
-const $$createType8 = $models.UploadRecordPage.createFrom;
-const $$createType9 = $Create.Array($Create.Any);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = $models.AccountsState.createFrom;
+const $$createType2 = $models.AlbumHistoryEntry.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $models.RecentAlbum.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $models.SavedAlbum.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $models.Config.createFrom;
+const $$createType9 = $models.UploadRecordPage.createFrom;
 const $$createType10 = $models.UploadRecordPreview.createFrom;

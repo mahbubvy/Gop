@@ -108,16 +108,34 @@ test('files picker allows multiple files, applies regular mode before starting',
   assert.equal(selection.busy.value, false)
 })
 
-test('folder picker passes the directory intact to existing scanning logic', async () => {
+test('Auto Album reviews all directories returned by the multi-folder picker', async () => {
+  const folders = ['/photos/trip', '/photos/family']
+  const { selection, calls, errors } = setup({
+    chooseAutoFolders: async () => folders,
+    reviewAuto: true,
+    previewAuto: async paths => {
+      assert.deepEqual(paths, folders)
+      return folders
+    },
+  })
+  selection.mode.value = 'auto-album'
+  await selection.choose('folder')
+  assert.deepEqual(errors, [])
+  assert.deepEqual(calls, [])
+  assert.deepEqual(selection.previewFolders.value, folders)
+  await selection.confirmAlbum()
+  assert.deepEqual(calls.at(-1), ['upload', folders])
+})
+
+test('regular folder picker passes a single directory intact to existing scanning logic', async () => {
   let options
   const { selection, calls } = setup({ openFile: async value => { options = value; return '/photos/trip' } })
-  selection.mode.value = 'auto-album'
   await selection.choose('folder')
   assert.equal(options.CanChooseFiles, false)
   assert.equal(options.CanChooseDirectories, true)
   assert.equal(options.AllowsMultipleSelection, false)
   assert.deepEqual(calls, [
-    ['account', 'test@example.com'], ['album', ''], ['auto', true], ['upload', ['/photos/trip']],
+    ['account', 'test@example.com'], ['album', ''], ['auto', false], ['upload', ['/photos/trip']],
   ])
 })
 
