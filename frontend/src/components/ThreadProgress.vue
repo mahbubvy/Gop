@@ -7,35 +7,34 @@ const props = defineProps<{
   thread: ThreadStatus
 }>()
 
-const statusConfig = computed(() => {
+const statusLabel = computed(() => {
   switch (props.thread.Status) {
     case 'error':
-      return { color: 'text-destructive', bg: 'bg-destructive/10', label: 'Error' }
+      return 'Error'
     case 'completed':
-      return { color: 'text-primary', bg: 'bg-primary/10', label: 'Done' }
+      return 'Done'
     case 'skipped':
-      return { color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-500/10', label: 'Skipped' }
+      return 'Skipped'
     case 'uploading':
-      if (props.thread.Attempt > 1) {
-        return { color: 'text-orange-500', bg: 'bg-orange-500/10', label: `Retry ${props.thread.Attempt - 1}` }
-      }
-      return { color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Uploading' }
+      return props.thread.Attempt > 1 ? `Retry ${props.thread.Attempt - 1}` : 'Uploading'
     case 'hashing':
-      return { color: 'text-cyan-500', bg: 'bg-cyan-500/10', label: 'Hashing' }
+      return 'Preparing file'
     case 'checking':
-      return { color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Checking' }
+      return 'Checking'
     case 'finalizing':
-      return { color: 'text-purple-500', bg: 'bg-purple-500/10', label: 'Finalizing' }
+      return 'Finalizing'
     default:
-      return { color: 'text-muted-foreground', bg: 'bg-muted', label: props.thread.Status }
+      return props.thread.Status
   }
 })
 
 const uploadPercent = computed(() => {
-  if (props.thread.Status !== 'uploading' || !props.thread.BytesTotal) {
+  const { Status, BytesTotal, BytesUploaded } = props.thread
+  if (Status === 'finalizing') return 100
+  if (Status !== 'uploading' || BytesTotal <= 0) {
     return null
   }
-  return Math.round((props.thread.BytesUploaded / props.thread.BytesTotal) * 100)
+  return Math.min(100, Math.max(0, Math.floor(BytesUploaded * 100 / BytesTotal)))
 })
 
 function formatBytes(bytes: number): string {
@@ -50,59 +49,56 @@ const fileSizeDisplay = computed(() => {
   if (props.thread.Status !== 'uploading' || !props.thread.BytesTotal) {
     return null
   }
-  return `${formatBytes(props.thread.BytesUploaded)}/${formatBytes(props.thread.BytesTotal)}`
+  return `${formatBytes(props.thread.BytesUploaded)} / ${formatBytes(props.thread.BytesTotal)}`
 })
 
 const statusMessage = computed(() => props.thread.Message.replace(/^Error:\s*/, ''))
 </script>
 
 <template>
-  <div class="px-2.5 py-2 bg-card border rounded-md">
-    <!-- Top row: status badge + filename -->
-    <div class="flex items-center gap-2 mb-1">
-      <span 
-        :class="[
-          'text-[10px] font-medium px-1.5 py-0.5 rounded',
-          statusConfig.color,
-          statusConfig.bg
-        ]"
+  <div class="space-y-2 rounded-md border bg-card p-3">
+    <div class="flex items-baseline gap-3">
+      <span
+        class="min-w-0 flex-1 truncate text-sm font-medium"
+        :title="thread.FilePath || thread.FileName"
       >
-        {{ statusConfig.label }}
+        {{ thread.FileName || thread.Message }}
       </span>
       <span
-        v-if="thread.FileName"
-        class="flex-1 text-xs truncate"
-        :title="thread.FilePath"
+        v-if="uploadPercent !== null"
+        class="shrink-0 text-lg font-semibold leading-none tabular-nums"
+        aria-hidden="true"
       >
-        {{ thread.FileName }}
-      </span>
-      <span
-        v-else
-        class="flex-1 text-xs truncate text-muted-foreground"
-      >
-        {{ thread.Message }}
+        {{ uploadPercent }}%
       </span>
     </div>
 
-    <!-- Progress bar (only when uploading) -->
-    <template v-if="uploadPercent !== null">
-      <Progress
-        :model-value="uploadPercent"
-        class="h-1 mb-1"
-      />
-      <div class="flex justify-between text-[10px] text-muted-foreground tabular-nums">
-        <span>{{ fileSizeDisplay }}</span>
-        <span>{{ uploadPercent }}%</span>
-      </div>
-    </template>
+    <Progress
+      v-if="uploadPercent !== null"
+      :model-value="uploadPercent"
+      :get-value-label="() => thread.FileName || 'File upload progress'"
+      :get-value-text="() => thread.Status === 'finalizing' ? '100%, finalizing' : `${uploadPercent}%`"
+      class="h-2.5"
+    />
+    <div
+      v-if="fileSizeDisplay"
+      class="flex flex-wrap justify-between gap-x-2 text-xs text-muted-foreground tabular-nums"
+    >
+      <span>{{ fileSizeDisplay }}</span>
+      <span v-if="thread.Attempt > 1">{{ statusLabel }}</span>
+    </div>
     <p
       v-else-if="thread.Status === 'error' || thread.Status === 'skipped'"
-      :class="[
-        'mt-1 text-[11px] leading-snug break-words',
-        thread.Status === 'error' ? 'text-destructive' : 'text-muted-foreground'
-      ]"
+      class="text-xs leading-snug break-words"
+      :class="thread.Status === 'error' ? 'text-destructive' : 'text-muted-foreground'"
     >
-      {{ statusMessage }}
+      {{ statusLabel }} · {{ statusMessage }}
+    </p>
+    <p
+      v-else
+      class="text-xs text-muted-foreground"
+    >
+      {{ statusLabel }}
     </p>
   </div>
 </template>

@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Button from "./components/ui/button/Button.vue"
 import { Progress } from "./components/ui/progress"
-import { ScrollArea } from "./components/ui/scroll-area"
 import ThreadProgress from "./components/ThreadProgress.vue"
 import { uploadManager } from './utils/UploadManager'
 import { X, Clock, Zap, FolderPlus, AlertTriangle } from '@lucide/vue'
@@ -38,11 +37,6 @@ const threadsList = computed(() => {
     .sort((a, b) => a.WorkerID - b.WorkerID)
 })
 
-const progressPercent = computed(() => {
-  if (state.totalFiles === 0) return 0
-  return Math.round((state.uploadedFiles / state.totalFiles) * 100)
-})
-
 // Format bytes to human readable
 function formatBytes(bytes: number, decimals = 1): string {
   if (bytes === 0) return '0 B'
@@ -68,12 +62,6 @@ const elapsedDisplay = computed(() => {
   const hours = Math.floor(mins / 60)
   const remainingMins = mins % 60
   return `${hours}h ${remainingMins}m`
-})
-
-// Bytes progress display
-const bytesDisplay = computed(() => {
-  if (state.totalBytes === 0) return ''
-  return `${formatBytes(state.uploadedBytes)} / ${formatBytes(state.totalBytes)}`
 })
 
 // Album progress display
@@ -107,37 +95,34 @@ function warningFiles(paths: string[]): string {
       <p class="mb-2 text-xs text-muted-foreground break-all">{{ account }}</p>
       <h1 class="text-lg font-semibold" aria-live="polite">{{ phaseHeading }}</h1>
       <p class="mb-3 text-sm text-muted-foreground break-words">{{ destination }}</p>
-      <p class="text-2xl font-bold tabular-nums">
-        {{ state.uploadedFiles }}<span class="text-muted-foreground font-normal">/</span><span class="text-muted-foreground">{{ state.totalFiles }}</span>
-      </p>
-      <p class="text-xs text-muted-foreground">
-        items processed
+      <p
+        v-if="state.totalFiles > 0"
+        class="text-xl font-semibold tabular-nums"
+      >
+        {{ state.uploadedFiles }} of {{ state.totalFiles }} files processed
       </p>
     </div>
 
     <!-- Stats row -->
     <div class="flex gap-3 justify-center mb-3 text-xs text-muted-foreground">
       <div class="flex items-center gap-1.5">
-        <Zap :size="12" />
+        <Zap
+          :size="12"
+          aria-hidden="true"
+        />
+        <span class="sr-only">Total upload speed</span>
         <span class="tabular-nums text-foreground">{{ speedDisplay }}</span>
       </div>
-      <span class="text-border">|</span>
+      <span
+        class="text-muted-foreground"
+        aria-hidden="true"
+      >·</span>
       <div class="flex items-center gap-1.5">
-        <Clock :size="12" />
-        <span class="tabular-nums text-foreground">{{ elapsedDisplay }}</span>
-      </div>
-    </div>
-
-    <!-- Main progress bar -->
-    <div class="mb-4">
-      <Progress
-        :model-value="progressPercent"
-        class="h-2.5"
-      />
-      <div class="flex justify-between mt-1.5 text-xs text-muted-foreground">
-        <span v-if="bytesDisplay">{{ bytesDisplay }}</span>
-        <span v-else>&nbsp;</span>
-        <span class="font-medium">{{ progressPercent }}%</span>
+        <Clock
+          :size="12"
+          aria-hidden="true"
+        />
+        <span class="tabular-nums text-foreground">{{ elapsedDisplay }} elapsed</span>
       </div>
     </div>
 
@@ -213,33 +198,42 @@ function warningFiles(paths: string[]): string {
       </div>
     </div>
 
-    <!-- Thread list - scrollable -->
-    <div class="flex-1 min-h-32 mb-3">
-      <p class="text-xs text-muted-foreground mb-1.5">
-        Active threads ({{ threadsList.length }})
-      </p>
-      <ScrollArea tabindex="0" aria-label="Current upload files" class="h-[calc(100%-20px)]">
-        <div class="space-y-1.5 pr-3 md:grid md:grid-cols-2 md:gap-2 md:space-y-0">
-          <ThreadProgress
+    <section
+      v-if="threadsList.length"
+      class="mb-4 flex min-h-32 flex-1 flex-col"
+    >
+      <h2
+        id="files-uploading"
+        class="mb-2 text-base font-semibold"
+      >
+        Files uploading
+      </h2>
+      <div
+        tabindex="0"
+        role="region"
+        aria-labelledby="files-uploading"
+        class="min-h-0 flex-1 overflow-y-auto rounded-md focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <ul class="space-y-2">
+          <li
             v-for="thread in threadsList"
             :key="thread.WorkerID"
-            :thread="thread"
-          />
-        </div>
-      </ScrollArea>
-    </div>
+          >
+            <ThreadProgress :thread="thread" />
+          </li>
+        </ul>
+      </div>
+    </section>
 
-    <!-- Cancel button - fixed at bottom -->
     <Button
-      variant="destructive"
-      size="sm"
-      class="w-full md:max-w-md md:self-center"
+      variant="outline"
+      class="mt-auto w-full border-destructive/60 bg-transparent text-destructive hover:bg-destructive/10 hover:text-destructive dark:border-destructive/60 dark:bg-transparent dark:hover:bg-destructive/10"
       :disabled="state.cancelRequested"
       @click="() => uploadManager.cancelUpload()"
     >
       <X
         :size="14"
-        class="mr-1"
+        aria-hidden="true"
       />
       {{ state.cancelRequested ? 'Cancelling…' : 'Cancel upload' }}
     </Button>
